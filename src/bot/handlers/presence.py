@@ -25,9 +25,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_step_down = re.match(r'^(desci|vou descer)$', text)
     
     # Check for mentions (multiple names supported)
-    mention_confirm_1 = re.match(r'^@?(.+?)\s+(vai|v[aã]o)$', text)
-    mention_confirm_2 = re.match(r'^(vai|v[aã]o)\s+@?(.+)$', text)
     mention_cancel_1 = re.match(r'^@?(.+?)\s+n[aã]o\s+(vai|v[aã]o)$', text)
+    mention_confirm_1 = re.match(r'^@?(.+?)\s+(vai|v[aã]o)$', text) if not mention_cancel_1 else None
+    mention_confirm_2 = re.match(r'^(vai|v[aã]o)\s+@?(.+)$', text) if not mention_cancel_1 else None
     mention_arrival_1 = re.match(r'^@?(.+?)\s+(chegou|chegaram|chego)$', text)
     mention_leave_1 = re.match(r'^@?(.+?)\s+(saiu|sa[ií]ram)$', text)
     mention_step_down_1 = re.match(r'^@?(.+?)\s+(desce|desse|desseu|desceu|vai descer|desceram|vai desser|vai desse|desseram|desserao|v[aã]o descer)$', text)
