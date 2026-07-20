@@ -1,3 +1,5 @@
 python-telegram-bot[job-queue]==20.8
 SQLAlchemy==2.0.28
 python-dotenv==1.0.1
+fastapi
+uvicorn

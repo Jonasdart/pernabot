@@ -9,6 +9,7 @@ import logging
 from dotenv import load_dotenv
 from telegram.ext import ApplicationBuilder
 from src.database import engine, Base
+import src.models  # Ensure all models are registered
 from src.bot.handlers.presence import presence_handler
 from src.bot.handlers.commands import handlers as command_handlers
 

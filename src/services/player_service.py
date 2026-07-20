@@ -100,3 +100,31 @@ def leave_presence(db: DbSession, session_id: int, name: str = None, telegram_id
     
     db.commit()
     return True, was_playing
+
+def set_paying_status(db: DbSession, session_id: int, name: str, is_paying: bool, telegram_id: int = None, telegram_username: str = None):
+    player = get_player(db, session_id, name=name, telegram_id=telegram_id)
+    
+    if not player:
+        # If the player does not exist in the session, create them so they can be marked as paying
+        # But this means they'll be added to the session.
+        # Ideally, paying members are already in the DB from previous sessions, but since we are tracking per session here...
+        # Wait, if a player pays, they confirm presence? Let's just create them as NOT confirmed but is_paying=True if they don't exist.
+        player = Player(
+            session_id=session_id,
+            name=name,
+            telegram_id=telegram_id,
+            telegram_username=telegram_username,
+            is_confirmed=False,
+            is_paying=is_paying
+        )
+        db.add(player)
+    else:
+        player.is_paying = is_paying
+        if telegram_id:
+            player.telegram_id = telegram_id
+        if telegram_username:
+            player.telegram_username = telegram_username
+            
+    db.commit()
+    db.refresh(player)
+    return player

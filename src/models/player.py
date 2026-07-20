@@ -14,6 +14,7 @@ class Player(Base):
     is_confirmed = Column(Boolean, default=False)
     has_arrived = Column(Boolean, default=False)
     is_playing = Column(Boolean, default=False)
+    is_paying = Column(Boolean, default=False)
     
     matches_played = Column(Integer, default=0)
     cycles_in_court = Column(Integer, default=0)

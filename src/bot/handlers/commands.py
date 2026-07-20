@@ -6,7 +6,7 @@ from src.services.player_service import get_all_active_players
 from src.engine.match import draw_teams, rotate_players
 from src.engine.explainer import generate_queue_explanation, generate_teams_explanation
 from src.bot.keyboards import get_dynamic_keyboard
-
+from src.models.match_log import MatchLog
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.callback_query.message
     chat_id = update.effective_chat.id
@@ -51,6 +51,12 @@ async def cmd_draw(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
             
         draw_teams(players)
+        
+        # Log match draw event
+        event_time = msg.date
+        match_log = MatchLog(session_id=session.id, event_type="draw", created_at=event_time)
+        db.add(match_log)
+        
         db.commit()
         
         explanation = generate_teams_explanation(players)
@@ -81,6 +87,12 @@ async def cmd_rotate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         players = get_all_active_players(db, session.id)
         entering = rotate_players(players, winner=winner)
+        
+        # Log match rotation event
+        event_time = msg.date
+        match_log = MatchLog(session_id=session.id, event_type="rotate", created_at=event_time)
+        db.add(match_log)
+        
         db.commit()
         
         explanation = generate_teams_explanation(players, title="🔄 *Rotação Realizada!*\n\n")

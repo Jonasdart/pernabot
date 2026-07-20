@@ -3,7 +3,13 @@ from telegram import Update
 from telegram.ext import ContextTypes, MessageHandler, filters
 from src.database import SessionLocal
 from src.services.session_service import get_active_session
-from src.services.player_service import confirm_presence, cancel_presence, register_arrival, get_confirmed_players, leave_presence
+from src.services.player_service import (
+    confirm_presence, cancel_presence, register_arrival, 
+    get_confirmed_players, leave_presence, set_paying_status, 
+    get_player, get_all_active_players
+)
+from src.engine.match import pull_next_player
+from src.engine.explainer import generate_teams_explanation
 from src.bot.keyboards import get_dynamic_keyboard
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -24,6 +30,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_leave = re.match(r'^(sai|eu sai|fui|fui embora)$', text)
     is_step_down = re.match(r'^(desci|vou descer)$', text)
     
+    is_pay = re.match(r'^(eu paguei|paguei)$', text)
+    is_not_pay = re.match(r'^(eu n[aã]o paguei|n[aã]o paguei)$', text)
+    
     # Check for mentions (multiple names supported)
     mention_cancel_1 = re.match(r'^@?(.+?)\s+n[aã]o\s+(vai|v[aã]o)$', text)
     mention_confirm_1 = re.match(r'^@?(.+?)\s+(vai|v[aã]o)$', text) if not mention_cancel_1 else None
@@ -32,8 +41,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mention_leave_1 = re.match(r'^@?(.+?)\s+(saiu|sa[ií]ram)$', text)
     mention_step_down_1 = re.match(r'^@?(.+?)\s+(desce|desse|desseu|desceu|vai descer|desceram|vai desser|vai desse|desseram|desserao|v[aã]o descer)$', text)
     
+    mention_not_pay_1 = re.match(r'^@?(.+?)\s+n[aã]o\s+pagou$', text)
+    mention_pay_1 = re.match(r'^@?(.+?)\s+(pagou|pagaro|pagaram|pagarao)$', text) if not mention_not_pay_1 else None
+    
     # Only proceed if we match something
-    if not any([is_confirm, is_cancel, is_arrival, mention_confirm_1, mention_confirm_2, mention_cancel_1, mention_arrival_1, is_leave, mention_leave_1, is_step_down, mention_step_down_1]):
+    if not any([is_confirm, is_cancel, is_arrival, mention_confirm_1, mention_confirm_2, mention_cancel_1, mention_arrival_1, is_leave, mention_leave_1, is_step_down, mention_step_down_1, is_pay, is_not_pay, mention_pay_1, mention_not_pay_1]):
         return
 
     db = SessionLocal()
@@ -69,6 +81,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif mention_step_down_1:
             target_names = parse_names(mention_step_down_1.group(1))
             is_mention = True
+        elif mention_pay_1:
+            target_names = parse_names(mention_pay_1.group(1))
+            is_mention = True
+        elif mention_not_pay_1:
+            target_names = parse_names(mention_not_pay_1.group(1))
+            is_mention = True
             
         if is_mention:
             target_telegram_id = None
@@ -83,7 +101,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             names_str = ", ".join(target_names)
             list_text = f"✅ Presença confirmada para {names_str}!\n\n📋 *Confirmados ({len(confirmed)}):*\n"
             for idx, p in enumerate(confirmed, 1):
-                list_text += f"{idx}. {p.name}\n"
+                icon = "✅ " if p.is_paying else ""
+                list_text += f"{idx}. {icon}{p.name}\n"
                 
             await update.message.reply_text(list_text, reply_markup=keyboard, parse_mode="Markdown")
             
@@ -102,7 +121,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 names_str = ", ".join(success_names)
                 list_text = f"❌ Presença cancelada para {names_str}.\n\n📋 *Confirmados ({len(confirmed)}):*\n"
                 for idx, p in enumerate(confirmed, 1):
-                    list_text += f"{idx}. {p.name}\n"
+                    icon = "✅ " if p.is_paying else ""
+                    list_text += f"{idx}. {icon}{p.name}\n"
                 await update.message.reply_text(list_text, reply_markup=keyboard, parse_mode="Markdown")
             if failed_names:
                 names_str = ", ".join(failed_names)
@@ -111,14 +131,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif is_arrival or mention_arrival_1:
             arrived_players = []
             duplicate_names = []
+            not_paying_names = []
             
             for name in target_names:
+                player = get_player(db, session.id, name=name, telegram_id=target_telegram_id)
+                is_paying = player.is_paying if player else False
+                
+                if not is_paying:
+                    not_paying_names.append(name)
+                    continue
+                    
                 player, is_new = register_arrival(db, session.id, name=name, telegram_id=target_telegram_id, telegram_username=target_username)
                 if is_new:
                     arrived_players.append(player)
                 else:
                     duplicate_names.append(name)
                     
+            if not_paying_names:
+                names_str = ", ".join(not_paying_names)
+                await update.message.reply_text(f"⚠️ {names_str} não pode confirmar chegada porque não pagou! Avise o pagamento primeiro (ex: `{names_str} pagou`).", reply_markup=keyboard, parse_mode="Markdown")
+                
             if duplicate_names:
                 names_str = ", ".join(duplicate_names)
                 await update.message.reply_text(
@@ -132,8 +164,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 orders_str = ", ".join([str(p.arrival_order) for p in arrived_players])
                 reply_text = f"📍 {names_str} chegou! (Ordem: {orders_str})"
                 
-                from src.services.player_service import get_all_active_players
-                from src.engine.explainer import generate_teams_explanation
                 players = get_all_active_players(db, session.id)
                 is_rolling = any(p.is_playing for p in players)
                 
@@ -146,9 +176,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             left_names = []
             missing_names = []
             replaced_by = []
-            
-            from src.services.player_service import get_all_active_players
-            from src.engine.match import pull_next_player
             
             for name in target_names:
                 success, was_playing = leave_presence(db, session.id, name=name, telegram_id=target_telegram_id)
@@ -183,9 +210,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             not_playing = []
             replaced_by = []
             
-            from src.services.player_service import get_all_active_players, get_player
-            from src.engine.match import pull_next_player
-            
             for name in target_names:
                 player = get_player(db, session.id, name=name, telegram_id=target_telegram_id)
                 if player and player.has_arrived and player.is_playing:
@@ -214,7 +238,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 elif len(replaced_by) < len(stepped_down):
                     reply_text += f"\n⚠️ A quadra ficou incompleta pois não há gente suficiente na fila."
                     
-                from src.engine.explainer import generate_teams_explanation
                 current_players = get_all_active_players(db, session.id)
                 reply_text += "\n\n" + generate_teams_explanation(current_players, title="🎲 *Situação Atual:*\n\n")
                 
@@ -223,6 +246,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not_playing:
                 names_str = ", ".join(not_playing)
                 await update.message.reply_text(f"⚠️ {names_str} não estava(m) jogando.", reply_markup=keyboard)
+
+        elif is_pay or mention_pay_1:
+            for name in target_names:
+                set_paying_status(db, session.id, name=name, is_paying=True, telegram_id=target_telegram_id, telegram_username=target_username)
+            names_str = ", ".join(target_names)
+            
+            confirmed = get_confirmed_players(db, session.id)
+            list_text = f"💰 Pagamento confirmado para {names_str}!\n\n📋 *Confirmados ({len(confirmed)}):*\n"
+            for idx, p in enumerate(confirmed, 1):
+                icon = "✅ " if p.is_paying else ""
+                list_text += f"{idx}. {icon}{p.name}\n"
+                
+            await update.message.reply_text(list_text, reply_markup=keyboard, parse_mode="Markdown")
+
+        elif is_not_pay or mention_not_pay_1:
+            for name in target_names:
+                set_paying_status(db, session.id, name=name, is_paying=False, telegram_id=target_telegram_id, telegram_username=target_username)
+            names_str = ", ".join(target_names)
+            await update.message.reply_text(f"❌ Status de pagamento cancelado para {names_str}.", reply_markup=keyboard)
                 
     finally:
         db.close()
