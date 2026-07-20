@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: pelada_bot_app
+    ports:
+      - "8000:8000"
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - BASE_URL=${BASE_URL:-https://pelada.duzzsystem.com.br}
+      - DATABASE_URL=sqlite:////app/data/pernabot.db
+    volumes:
+      - pelada_data:/app/data
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: pelada_bot_tunnel
+    restart: unless-stopped
+    # Opção A (Recomendada via Cloudflare Dashboard): Informe o token no arquivo .env
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    #
+    # Opção B (Caso utilize arquivo de credenciais local ~/.cloudflared):
+    # command: tunnel --no-autoupdate run
+    # volumes:
+    #   - ~/.cloudflared:/etc/cloudflared
+
+volumes:
+  pelada_data:
+    driver: local
