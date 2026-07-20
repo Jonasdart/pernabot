@@ -5,10 +5,11 @@ services:
     build: .
     container_name: pelada_bot_app
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - BASE_URL=${BASE_URL:-https://pelada.duzzsystem.com.br}
+      - ADMIN_KEY=${ADMIN_KEY}
       - DATABASE_URL=sqlite:////app/data/pernabot.db
     volumes:
       - pelada_data:/app/data

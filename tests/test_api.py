@@ -44,14 +44,25 @@ def client_and_db():
     app.dependency_overrides.clear()
     db.close()
 
-def test_list_sessions(client_and_db):
+def test_list_sessions(client_and_db, monkeypatch):
     client, session_id = client_and_db
+    
+    # Without ADMIN_KEY set in env, allows access
     response = client.get("/sessions")
     assert response.status_code == 200
-    data = response.json()
-    assert isinstance(data, list)
-    assert len(data) >= 1
-    assert data[0]["id"] == session_id
+    
+    # With ADMIN_KEY set in env, blocks without valid key
+    monkeypatch.setenv("ADMIN_KEY", "minha_senha_secreta")
+    
+    unauth_resp = client.get("/sessions")
+    assert unauth_resp.status_code == 401
+    
+    wrong_key_resp = client.get("/sessions?key=errada")
+    assert wrong_key_resp.status_code == 401
+    
+    auth_resp = client.get("/sessions?key=minha_senha_secreta")
+    assert auth_resp.status_code == 200
+    assert auth_resp.json()[0]["id"] == session_id
 
 def test_list_players_frag_stats(client_and_db):
     client, session_id = client_and_db

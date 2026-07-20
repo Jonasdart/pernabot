@@ -10,11 +10,13 @@ from src.engine.explainer import generate_queue_explanation, generate_teams_expl
 from src.bot.keyboards import get_dynamic_keyboard
 from src.models.match_log import MatchLog
 
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+def get_base_url() -> str:
+    return os.getenv("BASE_URL", "http://localhost:8000")
 
 def format_session_links(session) -> str:
-    public_url = f"{BASE_URL}/#/match/{session.public_hash}"
-    admin_url = f"{BASE_URL}/#/match/{session.public_hash}?admin={session.admin_token}"
+    base_url = get_base_url()
+    public_url = f"{base_url}/#/match/{session.public_hash}"
+    admin_url = f"{base_url}/#/match/{session.public_hash}?admin={session.admin_token}"
     return (
         f"📱 *Links da Pelada #{session.id}:*\n\n"
         f"👁️ *Link Público (Quadra ao Vivo):*\n{public_url}\n\n"

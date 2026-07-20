@@ -165,3 +165,7 @@ cython_debug/
 .vscode/
 
 *.db
+data/
+.cloudflared/
+*.json
+*.pem

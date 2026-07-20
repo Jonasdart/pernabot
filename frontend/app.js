@@ -171,10 +171,22 @@ function showView(viewName) {
     }
 }
 
+function getAdminKey() {
+    return localStorage.getItem('pelada_admin_key') || '';
+}
+
 // Fetch and render sessions
 async function loadSessions() {
+    const adminKey = getAdminKey();
     try {
-        const response = await fetch(`${API_BASE}/sessions`);
+        const url = adminKey ? `${API_BASE}/sessions?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions`;
+        const response = await fetch(url);
+
+        if (response.status === 401) {
+            renderAuthForm(adminKey ? 'Credencial inválida ou expirada.' : '');
+            return;
+        }
+
         if (!response.ok) throw new Error('Failed to fetch sessions');
 
         currentSessions = await response.json();
@@ -182,6 +194,34 @@ async function loadSessions() {
     } catch (error) {
         sessionsList.innerHTML = `<p style="color: #ef4444; text-align: center;">Erro ao carregar as peladas. Tente novamente mais tarde.</p>`;
         console.error(error);
+    }
+}
+
+function renderAuthForm(errorMsg = '') {
+    if (!sessionsList) return;
+    sessionsList.innerHTML = `
+        <div style="text-align: center; max-width: 360px; margin: 2rem auto; padding: 2rem; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+            <div style="font-size: 2.8rem; margin-bottom: 0.5rem;">🔒</div>
+            <h3 style="margin-bottom: 0.5rem; color: #ffffff; font-size: 1.25rem;">Acesso Restrito</h3>
+            <p style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.4;">Digite a credencial de administrador para acessar o painel de peladas.</p>
+            <form id="auth-form" style="display: flex; flex-direction: column; gap: 0.85rem;">
+                <input type="password" id="admin-key-input" placeholder="Credencial / Senha" required style="padding: 0.85rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.4); color: #ffffff; text-align: center; font-size: 1rem; width: 100%; outline: none;">
+                <button type="submit" class="btn primary" style="width: 100%; padding: 0.85rem; font-weight: bold; font-size: 0.95rem; cursor: pointer;">🔓 Entrar no Painel</button>
+            </form>
+            ${errorMsg ? `<p style="color: #ef4444; margin-top: 1rem; font-size: 0.85rem; font-weight: 500;">${errorMsg}</p>` : ''}
+        </div>
+    `;
+
+    const form = document.getElementById('auth-form');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const val = document.getElementById('admin-key-input').value.trim();
+            if (val) {
+                localStorage.setItem('pelada_admin_key', val);
+                await loadSessions();
+            }
+        });
     }
 }
 
@@ -254,7 +294,9 @@ async function loadSessionDetails(sessionId, date) {
     sessionTitle.textContent = `Pelada - ${date.toLocaleDateString('pt-BR')}`;
 
     try {
-        const response = await fetch(`${API_BASE}/sessions/${sessionId}/players`);
+        const adminKey = getAdminKey();
+        const url = adminKey ? `${API_BASE}/sessions/${sessionId}/players?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${sessionId}/players`;
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch players');
 
         currentPlayers = await response.json();

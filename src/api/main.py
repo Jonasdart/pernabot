@@ -31,7 +31,10 @@ if not os.path.exists(frontend_path):
 
 @app.get("/")
 def serve_index():
-    return FileResponse(os.path.join(frontend_path, "index.html"))
+    return FileResponse(
+        os.path.join(frontend_path, "index.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+    )
 
 app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 
@@ -133,8 +136,15 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
     }
 
 
+def check_admin_key(key: Optional[str]):
+    admin_key = os.getenv("ADMIN_KEY")
+    if admin_key and admin_key.strip():
+        if not key or key.strip() != admin_key.strip():
+            raise HTTPException(status_code=401, detail="Acesso não autorizado: credencial de administrador necessária")
+
 @app.get("/sessions")
-def list_sessions(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
+def list_sessions(key: Optional[str] = None, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
+    check_admin_key(key)
     sessions = db.query(models.Session).order_by(desc(models.Session.created_at)).all()
     for s in sessions:
         ensure_session_hashes(db, s)
@@ -218,7 +228,8 @@ def player_leave(public_hash: str, req: PlayerActionRequest, token: Optional[str
     return build_match_response(session, db, token)
 
 @app.get("/sessions/{session_id}/players")
-def list_players(session_id: int, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
+def list_players(session_id: int, key: Optional[str] = None, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
+    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
