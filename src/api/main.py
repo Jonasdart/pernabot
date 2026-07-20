@@ -56,8 +56,7 @@ def list_players(session_id: int, db: Session = Depends(get_db)) -> List[Dict[st
         raise HTTPException(status_code=404, detail="Session not found")
         
     players = db.query(models.Player).filter(
-        models.Player.session_id == session_id,
-        (models.Player.has_arrived == True) | (models.Player.matches_played > 0)
+        models.Player.session_id == session_id
     ).all()
     
     # Calculate average match duration
@@ -75,15 +74,27 @@ def list_players(session_id: int, db: Session = Depends(get_db)) -> List[Dict[st
     result = []
     for p in players:
         estimated_time = (p.matches_played * avg_duration_seconds) / 60  # in minutes
+        wins = p.wins or 0
+        draws = p.draws or 0
+        losses = p.losses or 0
+        points = (wins * 3) + (draws * 1)
+        
         result.append({
             "id": p.id,
             "name": p.name,
             "telegram_id": p.telegram_id,
+            "is_confirmed": p.is_confirmed,
+            "has_arrived": p.has_arrived,
+            "is_paying": p.is_paying,
             "matches_played": p.matches_played,
+            "wins": wins,
+            "draws": draws,
+            "losses": losses,
+            "points": points,
             "estimated_time_minutes": round(estimated_time, 2)
         })
         
-    # Sort players by estimated_time (descending) or matches_played
-    result.sort(key=lambda x: x["matches_played"], reverse=True)
+    # Sort players by points (descending), then wins (descending), then matches_played
+    result.sort(key=lambda x: (x["points"], x["wins"], x["matches_played"]), reverse=True)
     
     return result

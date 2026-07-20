@@ -3,3 +3,5 @@ SQLAlchemy==2.0.28
 python-dotenv==1.0.1
 fastapi
 uvicorn
+pytest
+httpx

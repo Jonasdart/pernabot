@@ -17,6 +17,9 @@ class Player(Base):
     is_paying = Column(Boolean, default=False)
     
     matches_played = Column(Integer, default=0)
+    wins = Column(Integer, default=0)
+    draws = Column(Integer, default=0)
+    losses = Column(Integer, default=0)
     cycles_in_court = Column(Integer, default=0)
     cycles_waiting = Column(Integer, default=0)
     

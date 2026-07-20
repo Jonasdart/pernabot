@@ -59,17 +59,34 @@ def rotate_players(active_players: List[Player], winner: int = 0):
     """
     playing = [p for p in active_players if p.is_playing]
     waiting = [p for p in active_players if not p.is_playing]
+
+    time_1 = [p for p in playing if p.team_slot == 1]
+    time_2 = [p for p in playing if p.team_slot == 2]
     
+    # Update Frag (V/E/D) stats for players on court
+    if winner == 1:
+        for p in time_1:
+            p.wins = (p.wins or 0) + 1
+        for p in time_2:
+            p.losses = (p.losses or 0) + 1
+    elif winner == 2:
+        for p in time_2:
+            p.wins = (p.wins or 0) + 1
+        for p in time_1:
+            p.losses = (p.losses or 0) + 1
+    else:
+        for p in playing:
+            p.draws = (p.draws or 0) + 1
+            
     if not waiting:
         # No one waiting, everyone stays in court.
         for p in playing:
             p.cycles_in_court += 1
+            p.matches_played += 1
         return []
         
     import random
-    time_1 = [p for p in playing if p.team_slot == 1]
-    time_2 = [p for p in playing if p.team_slot == 2]
-    
+
     if winner == 1:
         leaving_pool = sort_leaving_players(time_2)
         target_leaving = len(time_2)
