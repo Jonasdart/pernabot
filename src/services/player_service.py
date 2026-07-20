@@ -88,6 +88,13 @@ def get_all_active_players(db: DbSession, session_id: int):
 def get_confirmed_players(db: DbSession, session_id: int):
     return db.query(Player).filter(Player.session_id == session_id, Player.is_confirmed == True).all()
 
+def get_paying_players(db: DbSession, session_id: int):
+    return db.query(Player).filter(
+        Player.session_id == session_id, 
+        Player.is_confirmed == True, 
+        Player.is_paying == True
+    ).all()
+
 def leave_presence(db: DbSession, session_id: int, name: str = None, telegram_id: int = None):
     player = get_player(db, session_id, name=name, telegram_id=telegram_id)
     if not player or not player.has_arrived:

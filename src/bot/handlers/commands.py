@@ -46,8 +46,8 @@ async def cmd_draw(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
             
         players = get_all_active_players(db, session.id)
-        if not players:
-            await msg.reply_text("Nenhum jogador chegou ainda.", reply_markup=get_dynamic_keyboard(db, chat_id))
+        if len(players) < 8:
+            await msg.reply_text(f"⚠️ O sorteio só pode ser realizado com no mínimo 8 jogadores com chegada confirmada! (Atualmente: {len(players)})", reply_markup=get_dynamic_keyboard(db, chat_id))
             return
             
         draw_teams(players)

@@ -6,7 +6,7 @@ from src.services.session_service import get_active_session
 from src.services.player_service import (
     confirm_presence, cancel_presence, register_arrival, 
     get_confirmed_players, leave_presence, set_paying_status, 
-    get_player, get_all_active_players
+    get_player, get_all_active_players, get_paying_players
 )
 from src.engine.match import pull_next_player
 from src.engine.explainer import generate_teams_explanation
@@ -27,6 +27,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_confirm = re.match(r'^(eu vou|vou|\+|👍)$', text)
     is_cancel = re.match(r'^(não vou|\-)$', text)
     is_arrival = re.match(r'^(eu cheguei|cheguei|t[oó] aqui)$', text)
+    is_all_arrived = re.match(r'^(todos|todo mundo)\s+(chegou|chegaram)$', text)
     is_leave = re.match(r'^(sai|eu sai|fui|fui embora)$', text)
     is_step_down = re.match(r'^(desci|vou descer)$', text)
     
@@ -37,7 +38,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mention_cancel_1 = re.match(r'^@?(.+?)\s+n[aã]o\s+(vai|v[aã]o)$', text)
     mention_confirm_1 = re.match(r'^@?(.+?)\s+(vai|v[aã]o)$', text) if not mention_cancel_1 else None
     mention_confirm_2 = re.match(r'^(vai|v[aã]o)\s+@?(.+)$', text) if not mention_cancel_1 else None
-    mention_arrival_1 = re.match(r'^@?(.+?)\s+(chegou|chegaram|chego)$', text)
+    mention_arrival_1 = re.match(r'^@?(.+?)\s+(chegou|chegaram|chego)$', text) if not is_all_arrived else None
     mention_leave_1 = re.match(r'^@?(.+?)\s+(saiu|sa[ií]ram)$', text)
     mention_step_down_1 = re.match(r'^@?(.+?)\s+(desce|desse|desseu|desceu|vai descer|desceram|vai desser|vai desse|desseram|desserao|v[aã]o descer)$', text)
     
@@ -45,7 +46,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mention_pay_1 = re.match(r'^@?(.+?)\s+(pagou|pagaro|pagaram|pagarao)$', text) if not mention_not_pay_1 else None
     
     # Only proceed if we match something
-    if not any([is_confirm, is_cancel, is_arrival, mention_confirm_1, mention_confirm_2, mention_cancel_1, mention_arrival_1, is_leave, mention_leave_1, is_step_down, mention_step_down_1, is_pay, is_not_pay, mention_pay_1, mention_not_pay_1]):
+    if not any([is_confirm, is_cancel, is_arrival, is_all_arrived, mention_confirm_1, mention_confirm_2, mention_cancel_1, mention_arrival_1, is_leave, mention_leave_1, is_step_down, mention_step_down_1, is_pay, is_not_pay, mention_pay_1, mention_not_pay_1]):
         return
 
     db = SessionLocal()
@@ -128,6 +129,33 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 names_str = ", ".join(failed_names)
                 await update.message.reply_text(f"⚠️ {names_str} não estava(m) confirmado(s).", reply_markup=keyboard)
                 
+        elif is_all_arrived:
+            paying_players = get_paying_players(db, session.id)
+            if not paying_players:
+                await update.message.reply_text("⚠️ Nenhum jogador da lista de presença consta como pagante ainda.", reply_markup=keyboard)
+            else:
+                arrived_players = []
+                already_arrived = []
+                for p_paying in paying_players:
+                    player, is_new = register_arrival(db, session.id, name=p_paying.name, telegram_id=p_paying.telegram_id, telegram_username=p_paying.telegram_username)
+                    if is_new:
+                        arrived_players.append(player)
+                    else:
+                        already_arrived.append(player)
+                
+                if arrived_players:
+                    names_str = ", ".join([p.name for p in arrived_players])
+                    reply_text = f"📍 Chegada confirmada para os pagantes da lista de presença! ({names_str})"
+                    
+                    players = get_all_active_players(db, session.id)
+                    is_rolling = any(p.is_playing for p in players)
+                    if is_rolling:
+                        reply_text += "\n\n" + generate_teams_explanation(players, title="🎲 *Situação Atual:*\n\n")
+                        
+                    await update.message.reply_text(reply_text, reply_markup=keyboard, parse_mode="Markdown")
+                else:
+                    await update.message.reply_text("📍 Todos os pagantes da lista de presença já haviam feito check-in.", reply_markup=keyboard)
+
         elif is_arrival or mention_arrival_1:
             arrived_players = []
             duplicate_names = []
@@ -171,7 +199,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_text += "\n\n" + generate_teams_explanation(players, title="🎲 *Situação Atual:*\n\n")
                     
                 await update.message.reply_text(reply_text, reply_markup=keyboard, parse_mode="Markdown")
-                
+
         elif is_leave or mention_leave_1:
             left_names = []
             missing_names = []
