@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,16 +8,17 @@
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div class="background">
         <div class="circle circle-1"></div>
         <div class="circle circle-2"></div>
     </div>
-    
+
     <div class="container">
         <header class="header">
-            <h1>Pernabot Dashboard</h1>
-            <p>Acompanhe o tempo de jogo e desempenho da pelada</p>
+            <!-- <h1>Pernabot Dashboard</h1> -->
+            <p></p>
         </header>
 
         <main>
@@ -24,7 +26,8 @@
                 <div class="glass-card">
                     <div class="section-title-bar">
                         <h2>Histórico de Peladas</h2>
-                        <button id="refresh-sessions-btn" class="btn secondary sm" title="Atualizar">🔄 Atualizar</button>
+                        <button id="refresh-sessions-btn" class="btn secondary sm" title="Atualizar">🔄
+                            Atualizar</button>
                     </div>
                     <div id="sessions-list" class="sessions-list">
                         <!-- Sessions will be injected here -->
@@ -54,7 +57,7 @@
                             <p id="total-paying">0</p>
                         </div>
                     </div>
-                    
+
                     <div class="tabs-nav">
                         <button class="tab-btn active" data-tab="tab-stats">⚽ Estatísticas</button>
                         <button class="tab-btn" data-tab="tab-presence">📋 Lista de Presença</button>
@@ -69,9 +72,12 @@
                                     <tr id="stats-table-header">
                                         <th class="sortable" data-sort="pos">Pos <span class="sort-icon"></span></th>
                                         <th class="sortable" data-sort="name">Nome <span class="sort-icon"></span></th>
-                                        <th class="sortable" data-sort="matches">Partidas <span class="sort-icon"></span></th>
-                                        <th class="sortable" data-sort="frag">Frag (V/E/D) <span class="sort-icon"></span></th>
-                                        <th class="sortable active desc" data-sort="pts">PTS <span class="sort-icon">▼</span></th>
+                                        <th class="sortable" data-sort="matches">Partidas <span
+                                                class="sort-icon"></span></th>
+                                        <th class="sortable" data-sort="frag">Frag (V/E/D) <span
+                                                class="sort-icon"></span></th>
+                                        <th class="sortable active desc" data-sort="pts">PTS <span
+                                                class="sort-icon">▼</span></th>
                                         <th class="sortable" data-sort="time">Tempo <span class="sort-icon"></span></th>
                                     </tr>
                                 </thead>
@@ -120,9 +126,118 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Section: Match View (Quadra ao Vivo) -->
+            <section id="match-view" class="view">
+                <div class="view-header-actions">
+                    <span id="admin-badge" class="badge admin-mode-badge hidden">⚡ Modo Gerenciador</span>
+                    <button id="match-refresh-btn" class="btn secondary" title="Atualizar dados">🔄 Atualizar</button>
+                </div>
+
+                <!-- Match Live Header & Stopwatch -->
+                <div class="glass-card match-timer-card">
+                    <div class="match-timer-header">
+                        <div class="timer-title">
+                            <p id="match-session-label">Tempo rolado</p>
+                        </div>
+                        <div class="stopwatch-display">
+                            <span id="match-stopwatch" class="timer-time">00:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Action Controls (Visible only if is_admin == true) -->
+                <div id="admin-controls-panel" class="glass-card admin-panel hidden">
+                    <h3>⚡ Definir Vencedor da Partida</h3>
+                    <div class="match-actions-grid">
+                        <button id="btn-win-t1" class="btn btn-action win-t1">🏆 Venceu Time 1</button>
+                        <button id="btn-draw" class="btn btn-action draw">🤝 Empatou</button>
+                        <button id="btn-win-t2" class="btn btn-action win-t2">🏆 Venceu Time 2</button>
+                    </div>
+                </div>
+
+                <!-- Pitch Visualization (Team 1 vs Team 2) -->
+                <div class="pitch-container glass-card">
+                    <div class="pitch-header">
+                        <span id="team1-title" class="team-title t1">Time 1</span>
+                        <span class="vs-badge">VS</span>
+                        <span id="team2-title" class="team-title t2">Time 2</span>
+                    </div>
+
+                    <div class="pitch-grid">
+                        <!-- Team 1 Side -->
+                        <div class="team-box t1-box">
+                            <div id="team1-players" class="pitch-players-list">
+                                <!-- Team 1 players injected here -->
+                            </div>
+                        </div>
+
+                        <!-- Pitch Center Line -->
+                        <div class="pitch-center-line"></div>
+
+                        <!-- Team 2 Side -->
+                        <div class="team-box t2-box">
+                            <div id="team2-players" class="pitch-players-list">
+                                <!-- Team 2 players injected here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Floating Action Button for Queue -->
+                <button id="fab-queue-btn" class="fab-btn">
+                    📋 Fila de Espera (<span id="fab-queue-count">0</span>)
+                </button>
+
+                <!-- Modal Sheet for Queue and Next Team -->
+                <div id="queue-modal" class="modal-overlay hidden">
+                    <div class="modal-card glass-card">
+                        <div class="modal-header">
+                            <h2>📋 Fila & Próximo Time</h2>
+                            <button id="close-queue-modal-btn" class="btn-close">✕</button>
+                        </div>
+
+                        <div class="modal-body">
+                            <!-- Next Team -->
+                            <div class="modal-section">
+                                <div class="section-title-bar">
+                                    <h3>🔥 Próximo Time</h3>
+                                    <span id="next-team-count-badge" class="badge active">0 Jogadores</span>
+                                </div>
+                                <div id="next-team-list" class="next-team-grid">
+                                    <!-- Next team injected here -->
+                                </div>
+                            </div>
+
+                            <!-- Full Queue -->
+                            <div class="modal-section" style="margin-top: 1.5rem;">
+                                <div class="section-title-bar">
+                                    <h3>📋 Fila de Espera Completa</h3>
+                                </div>
+                                <div class="table-container">
+                                    <table class="players-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Pos</th>
+                                                <th>Nome</th>
+                                                <th>Aguardando</th>
+                                                <th>Partidas</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="match-queue-list">
+                                            <!-- Queue injected here -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
     <script src="/static/app.js"></script>
 </body>
+
 </html>

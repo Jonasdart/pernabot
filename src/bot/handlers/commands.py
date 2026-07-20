@@ -1,3 +1,5 @@
+import os
+from datetime import datetime, timezone
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 from src.database import SessionLocal
@@ -7,6 +9,18 @@ from src.engine.match import draw_teams, rotate_players
 from src.engine.explainer import generate_queue_explanation, generate_teams_explanation
 from src.bot.keyboards import get_dynamic_keyboard
 from src.models.match_log import MatchLog
+
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+
+def format_session_links(session) -> str:
+    public_url = f"{BASE_URL}/#/match/{session.public_hash}"
+    admin_url = f"{BASE_URL}/#/match/{session.public_hash}?admin={session.admin_token}"
+    return (
+        f"📱 *Links da Pelada #{session.id}:*\n\n"
+        f"👁️ *Link Público (Quadra ao Vivo):*\n{public_url}\n\n"
+        f"⚡ *Link de Gerenciador (Marcar Vencedores/Descer/Sair):*\n{admin_url}"
+    )
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.callback_query.message
     chat_id = update.effective_chat.id
@@ -28,7 +42,27 @@ async def cmd_new_session(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
         session = create_session(db, chat_id)
-        await msg.reply_text(f"⚽ Nova pelada iniciada! Sessão #{session.id}. Podem confirmar presença!", reply_markup=get_dynamic_keyboard(db, chat_id))
+        links_text = format_session_links(session)
+        reply = f"⚽ *Nova pelada iniciada! Sessão #{session.id}*\nPodem confirmar presença!\n\n" + links_text
+        await msg.reply_text(reply, parse_mode="Markdown", reply_markup=get_dynamic_keyboard(db, chat_id))
+    finally:
+        db.close()
+
+async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    msg = update.message or update.callback_query.message
+    if update.callback_query:
+        await update.callback_query.answer()
+        
+    db = SessionLocal()
+    try:
+        session = get_active_session(db, chat_id)
+        if not session:
+            await msg.reply_text("Nenhuma pelada ativa. Use /nova_pelada.", reply_markup=get_dynamic_keyboard(db, chat_id))
+            return
+            
+        links_text = format_session_links(session)
+        await msg.reply_text(links_text, parse_mode="Markdown", reply_markup=get_dynamic_keyboard(db, chat_id))
     finally:
         db.close()
 
@@ -53,7 +87,7 @@ async def cmd_draw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         draw_teams(players)
         
         # Log match draw event
-        event_time = msg.date
+        event_time = datetime.now(timezone.utc)
         match_log = MatchLog(session_id=session.id, event_type="draw", created_at=event_time)
         db.add(match_log)
         
@@ -89,7 +123,7 @@ async def cmd_rotate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         entering = rotate_players(players, winner=winner)
         
         # Log match rotation event
-        event_time = msg.date
+        event_time = datetime.now(timezone.utc)
         match_log = MatchLog(session_id=session.id, event_type="rotate", created_at=event_time)
         db.add(match_log)
         
@@ -133,6 +167,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_rotate(update, context)
     elif query == "cmd_fila":
         await cmd_queue(update, context)
+    elif query == "cmd_link":
+        await cmd_link(update, context)
 
 handlers = [
     CommandHandler("start", start),
@@ -140,5 +176,8 @@ handlers = [
     CommandHandler("sortear", cmd_draw),
     CommandHandler("proximo", cmd_rotate),
     CommandHandler("fila", cmd_queue),
+    CommandHandler("link", cmd_link),
+    CommandHandler("links", cmd_link),
     CallbackQueryHandler(handle_callback)
 ]
+

@@ -78,3 +78,17 @@ def test_session_not_found(client_and_db):
     response = client.get("/sessions/999999/players")
     assert response.status_code == 404
     assert response.json()["detail"] == "Session not found"
+
+def test_get_match_by_hash(client_and_db):
+    client, session_id = client_and_db
+    sessions_resp = client.get("/sessions")
+    public_hash = sessions_resp.json()[0]["public_hash"]
+    
+    match_resp = client.get(f"/sessions/hash/{public_hash}")
+    assert match_resp.status_code == 200
+    data = match_resp.json()
+    assert data["public_hash"] == public_hash
+    assert "last_event_time" in data
+    assert data["last_event_time"] is not None
+    assert "+" in data["last_event_time"] or "Z" in data["last_event_time"]
+
