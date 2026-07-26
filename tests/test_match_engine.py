@@ -87,3 +87,60 @@ def test_pull_next_player():
     assert pulled is not None
     assert pulled.id == waiting_before[0].id
     assert pulled.is_playing is True
+
+from src.engine.match import sort_entering_players
+
+def test_late_arrival_behind_waiting_players_with_zero_matches():
+    """
+    After draw, players 9..12 are waiting (matches_played=0).
+    A late arrival player 13 arrives (matches_played=0).
+    Player 13 should NOT jump ahead of waiting players 9..12.
+    """
+    players = create_mock_players(12)
+    draw_teams(players)
+    
+    # Simulate late arrival after draw
+    late_player = Player(
+        id=13,
+        session_id=1,
+        name="Player 13 (Late)",
+        has_arrived=True,
+        is_playing=False,
+        matches_played=0,
+        cycles_waiting=1,
+        arrival_order=13,
+        initial_draw_order=9999
+    )
+    players.append(late_player)
+    
+    waiting = [p for p in players if not p.is_playing]
+    sorted_waiting = sort_entering_players(waiting)
+    
+    # The late arrival should be at the end of the 0-match waiting players
+    assert sorted_waiting[-1].id == 13
+
+def test_late_arrival_ahead_of_waiting_players_with_matches_played():
+    """
+    If players in queue have already played a match (matches_played > 0),
+    a late arrival (matches_played = 0) SHOULD have priority over them.
+    """
+    # 4 players who have played 1 match and are waiting
+    p_played = []
+    for i in range(1, 5):
+        p_played.append(Player(
+            id=i, session_id=1, name=f"Played {i}", has_arrived=True,
+            is_playing=False, matches_played=1, cycles_waiting=1, arrival_order=i, initial_draw_order=i
+        ))
+        
+    # Late arrival who hasn't played any match yet
+    late_player = Player(
+        id=5, session_id=1, name="Late 5", has_arrived=True,
+        is_playing=False, matches_played=0, cycles_waiting=1, arrival_order=5, initial_draw_order=9999
+    )
+    
+    waiting = p_played + [late_player]
+    sorted_waiting = sort_entering_players(waiting)
+    
+    # Late player with 0 matches played should be first in queue
+    assert sorted_waiting[0].id == 5
+

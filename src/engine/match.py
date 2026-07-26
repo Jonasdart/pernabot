@@ -43,13 +43,13 @@ def sort_leaving_players(playing_players: List[Player]) -> List[Player]:
 
 def sort_entering_players(waiting_players: List[Player]) -> List[Player]:
     """
-    Order: cycles_waiting DESC, matches_played ASC, initial_draw_order ASC, arrival_order dynamic
-    If matches_played == 0 (new arrival): prioritize LATEST arrival (-arrival_order)
-    If matches_played > 0 (already played): prioritize OLDEST arrival (arrival_order)
+    Order: cycles_waiting DESC, matches_played ASC, initial_draw_order ASC, arrival_order ASC
+    A player who arrives late can only take priority over waiting players if those waiting have already played at least 1 match.
+    Among players with the same number of matches played and cycle status, earlier arrivals take precedence (FIFO).
     """
     return sorted(
         waiting_players,
-        key=lambda p: (-p.cycles_waiting, p.matches_played, p.initial_draw_order, -p.arrival_order if p.matches_played == 0 else p.arrival_order)
+        key=lambda p: (-p.cycles_waiting, p.matches_played, p.initial_draw_order, p.arrival_order)
     )
 
 def rotate_players(active_players: List[Player], winner: int = 0):
