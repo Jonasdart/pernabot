@@ -211,7 +211,7 @@
                         </div>
 
                         <div class="modal-body">
-                            <!-- Next Team -->
+                            <!-- 1. Next Team -->
                             <div class="modal-section">
                                 <div class="section-title-bar">
                                     <h3>🔥 Próximo Time</h3>
@@ -222,18 +222,7 @@
                                 </div>
                             </div>
 
-                            <!-- Pending Check-in Section -->
-                            <div class="modal-section" style="margin-top: 1.5rem;">
-                                <div class="section-title-bar">
-                                    <h3>📍 Confirmados Aguardando Check-in</h3>
-                                    <span id="pending-checkin-count" class="badge pending">0</span>
-                                </div>
-                                <div id="pending-checkin-list" class="pending-checkin-grid">
-                                    <!-- Pending checkin players injected here -->
-                                </div>
-                            </div>
-
-                            <!-- Full Queue -->
+                            <!-- 2. Full Queue -->
                             <div class="modal-section" style="margin-top: 1.5rem;">
                                 <div class="section-title-bar">
                                     <h3>📋 Fila de Espera na Quadra</h3>
@@ -254,6 +243,31 @@
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+
+                            <!-- 3. Pending Check-in Section -->
+                            <div class="modal-section" style="margin-top: 1.5rem;">
+                                <div class="section-title-bar">
+                                    <h3>📍 Confirmados Aguardando Check-in</h3>
+                                    <span id="pending-checkin-count" class="badge pending">0</span>
+                                </div>
+                                <div id="pending-checkin-list" class="pending-checkin-grid">
+                                    <!-- Pending checkin players injected here -->
+                                </div>
+                            </div>
+
+                            <!-- 4. Quick Add Arriving Player -->
+                            <div class="modal-section" style="margin-top: 1.5rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 12px; border: 1px dashed rgba(255,255,255,0.15);">
+                                <div class="section-title-bar" style="margin-bottom: 0.5rem;">
+                                    <h3 style="font-size: 0.95rem;">⚡ Registrar Chegada de Novo Jogador</h3>
+                                </div>
+                                <form id="quick-add-arrival-form" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                                    <input type="text" id="quick-player-name-input" placeholder="Nome do participante" required class="input-field" style="flex: 1; min-width: 160px; padding: 0.5rem 0.8rem; font-size: 0.85rem;">
+                                    <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; color: var(--text-muted); cursor: pointer;">
+                                        <input type="checkbox" id="quick-is-paying" checked> Pago 💳
+                                    </label>
+                                    <button type="submit" class="btn primary sm" style="white-space: nowrap; font-size: 0.85rem; padding: 0.5rem 0.8rem;">📍 Confirmar Chegada</button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -309,7 +323,7 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=5.1"></script>
+    <script src="/static/app.js?v=6"></script>
 </body>
 
 </html>

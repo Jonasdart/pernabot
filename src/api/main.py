@@ -301,6 +301,20 @@ def player_payment_hash(public_hash: str, req: PaymentActionRequest, token: Opti
     set_paying_status(db, session.id, name=player.name, is_paying=req.is_paying, telegram_id=player.telegram_id)
     return build_match_response(session, db, token)
 
+@app.post("/sessions/hash/{public_hash}/adicionar")
+def add_player_hash(public_hash: str, req: AddPlayerRequest, token: Optional[str] = None, db: Session = Depends(get_db)):
+    session = get_session_by_hash(db, public_hash)
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+        
+    confirm_presence(db, session.id, name=req.name)
+    if req.is_paying:
+        set_paying_status(db, session.id, name=req.name, is_paying=True)
+    if req.do_checkin:
+        register_arrival(db, session.id, name=req.name)
+
+    return build_match_response(session, db, token)
+
 @app.get("/sessions/{session_id}/players")
 def list_players(session_id: int, key: Optional[str] = None, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     check_admin_key(key)

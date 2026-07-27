@@ -766,6 +766,69 @@ function setupMatchViewListeners() {
         });
     }
 
+    const quickAddArrivalForm = document.getElementById('quick-add-arrival-form');
+    if (quickAddArrivalForm) {
+        quickAddArrivalForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const nameInput = document.getElementById('quick-player-name-input');
+            const isPayingInput = document.getElementById('quick-is-paying');
+
+            const name = nameInput ? nameInput.value.trim() : '';
+            if (!name) return;
+
+            const is_paying = isPayingInput ? isPayingInput.checked : true;
+
+            try {
+                if (currentPublicHash) {
+                    let url = `${API_BASE}/sessions/hash/${currentPublicHash}/adicionar`;
+                    if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: name,
+                            is_paying: is_paying,
+                            is_confirmed: true,
+                            do_checkin: true
+                        })
+                    });
+
+                    if (res.ok) {
+                        if (nameInput) nameInput.value = '';
+                        const data = await res.json();
+                        renderMatchData(data);
+                        return;
+                    }
+                }
+
+                if (activeSessionId) {
+                    const adminKey = getAdminKey();
+                    const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players`;
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: name,
+                            is_paying: is_paying,
+                            is_confirmed: true,
+                            do_checkin: true
+                        })
+                    });
+
+                    if (res.ok) {
+                        if (nameInput) nameInput.value = '';
+                        loadSessionDetails(activeSessionId, activeSessionDate);
+                    } else {
+                        const err = await res.json();
+                        alert(`Erro: ${err.detail || 'Falha ao registrar chegada'}`);
+                    }
+                }
+            } catch (err) {
+                console.error('Erro ao registrar chegada do jogador:', err);
+            }
+        });
+    }
+
     // Queue FAB & Modal handlers
     const fabQueueBtn = document.getElementById('fab-queue-btn');
     const queueModal = document.getElementById('queue-modal');
