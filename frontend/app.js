@@ -421,7 +421,7 @@ function renderPresenceTable(players) {
     const presencePlayers = players.filter(p => p.is_confirmed || p.has_arrived);
 
     if (presencePlayers.length === 0) {
-        presenceList.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhuma presença confirmada.</td></tr>`;
+        presenceList.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhuma presença confirmada.</td></tr>`;
         return;
     }
 
@@ -446,7 +446,24 @@ function renderPresenceTable(players) {
             <td><strong>${player.name}</strong></td>
             <td>${statusBadge}</td>
             <td>${payBadge}</td>
+            <td class="action-cell"></td>
         `;
+
+        const actionTd = el.querySelector('.action-cell');
+        if (player.has_arrived) {
+            const checkoutBtn = document.createElement('button');
+            checkoutBtn.className = 'btn-action-sm checkout';
+            checkoutBtn.textContent = '👋 Saiu';
+            checkoutBtn.onclick = () => handleCheckoutPlayer(player);
+            actionTd.appendChild(checkoutBtn);
+        } else {
+            const checkinBtn = document.createElement('button');
+            checkinBtn.className = 'btn-action-sm checkin';
+            checkinBtn.textContent = '📍 Chegou';
+            checkinBtn.onclick = () => handleCheckinPlayer(player);
+            actionTd.appendChild(checkinBtn);
+        }
+
         presenceList.appendChild(el);
     });
 }
@@ -456,8 +473,20 @@ function renderPaymentTable(players) {
     paymentList.innerHTML = '';
     const relevantPlayers = players.filter(p => p.is_confirmed || p.has_arrived || p.is_paying);
 
+    const totalCount = relevantPlayers.length;
+    const payingCount = relevantPlayers.filter(p => p.is_paying).length;
+    const percent = totalCount > 0 ? Math.round((payingCount / totalCount) * 100) : 0;
+
+    const countTextEl = document.getElementById('payment-count-text');
+    const percentTextEl = document.getElementById('payment-percent-text');
+    const progressFillEl = document.getElementById('payment-progress-fill');
+
+    if (countTextEl) countTextEl.textContent = `${payingCount} de ${totalCount} pagos`;
+    if (percentTextEl) percentTextEl.textContent = `${percent}% Pago`;
+    if (progressFillEl) progressFillEl.style.width = `${percent}%`;
+
     if (relevantPlayers.length === 0) {
-        paymentList.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Nenhum jogador na lista.</td></tr>`;
+        paymentList.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhum jogador na lista.</td></tr>`;
         return;
     }
 
@@ -471,9 +500,171 @@ function renderPaymentTable(players) {
             <td>#${index + 1}</td>
             <td><strong>${player.name}</strong></td>
             <td>${payBadge}</td>
+            <td class="action-cell"></td>
         `;
+
+        const actionTd = el.querySelector('.action-cell');
+        const togglePayBtn = document.createElement('button');
+        if (player.is_paying) {
+            togglePayBtn.className = 'btn-action-sm unpay';
+            togglePayBtn.textContent = '↩️ Desfazer Pago';
+            togglePayBtn.onclick = () => handleSetPayment(player.id, false);
+        } else {
+            togglePayBtn.className = 'btn-action-sm pay';
+            togglePayBtn.textContent = '💳 Marcar Pago';
+            togglePayBtn.onclick = () => handleSetPayment(player.id, true);
+        }
+        actionTd.appendChild(togglePayBtn);
+
         paymentList.appendChild(el);
     });
+}
+
+// ==========================================
+// Handlers for Check-in, Checkout & Payments
+// ==========================================
+
+function promptPaymentCheckin(player, onSuccess) {
+    const modalPlayerName = document.getElementById('modal-player-name');
+    const modalPlayerName2 = document.getElementById('modal-player-name-2');
+    if (modalPlayerName) modalPlayerName.textContent = player.name;
+    if (modalPlayerName2) modalPlayerName2.textContent = player.name;
+
+    const confirmModal = document.getElementById('confirm-pay-checkin-modal');
+    if (!confirmModal) return;
+
+    confirmModal.classList.remove('hidden');
+
+    const confirmBtn = document.getElementById('btn-confirm-pay-and-checkin');
+    const cancelBtn = document.getElementById('btn-cancel-pay-checkin');
+    const closeBtn = document.getElementById('close-confirm-modal-btn');
+
+    const cleanup = () => {
+        confirmModal.classList.add('hidden');
+        if (confirmBtn) confirmBtn.onclick = null;
+        if (cancelBtn) cancelBtn.onclick = null;
+        if (closeBtn) closeBtn.onclick = null;
+    };
+
+    if (cancelBtn) cancelBtn.onclick = cleanup;
+    if (closeBtn) closeBtn.onclick = cleanup;
+
+    if (confirmBtn) {
+        confirmBtn.onclick = async () => {
+            cleanup();
+            await handleSetPayment(player.id, true);
+            await handleCheckinPlayer(player, true);
+            if (onSuccess) onSuccess();
+        };
+    }
+}
+
+async function handleCheckinPlayer(player, forcePay = false) {
+    if (!player.is_paying && !forcePay) {
+        promptPaymentCheckin(player, () => {
+            if (activeSessionId) loadSessionDetails(activeSessionId, activeSessionDate);
+            if (currentPublicHash) fetchMatchData(currentPublicHash, currentAdminToken);
+        });
+        return;
+    }
+
+    try {
+        if (currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/checkin`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: player.id })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                renderMatchData(data);
+                return;
+            }
+        }
+
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players/${player.id}/checkin?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players/${player.id}/checkin`;
+            const res = await fetch(url, { method: 'POST' });
+            if (res.ok) {
+                loadSessionDetails(activeSessionId, activeSessionDate);
+            } else {
+                const err = await res.json();
+                alert(`Erro: ${err.detail || 'Falha ao realizar check-in'}`);
+            }
+        }
+    } catch (e) {
+        console.error('Erro no check-in:', e);
+    }
+}
+
+async function handleCheckoutPlayer(player) {
+    try {
+        if (currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/checkout`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: player.id })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                renderMatchData(data);
+                return;
+            }
+        }
+
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players/${player.id}/checkout?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players/${player.id}/checkout`;
+            const res = await fetch(url, { method: 'POST' });
+            if (res.ok) {
+                loadSessionDetails(activeSessionId, activeSessionDate);
+            } else {
+                const err = await res.json();
+                alert(`Erro: ${err.detail || 'Falha ao realizar checkout'}`);
+            }
+        }
+    } catch (e) {
+        console.error('Erro no checkout:', e);
+    }
+}
+
+async function handleSetPayment(playerId, isPaying) {
+    try {
+        if (currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/pagamento`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: playerId, is_paying: isPaying })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                renderMatchData(data);
+                return;
+            }
+        }
+
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/pagamento?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/pagamento`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: playerId, is_paying: isPaying })
+            });
+            if (res.ok) {
+                loadSessionDetails(activeSessionId, activeSessionDate);
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao atualizar pagamento:', e);
+    }
 }
 
 // ==========================================
@@ -498,6 +689,82 @@ function setupMatchViewListeners() {
     btnWinT1.addEventListener('click', () => handleRotateMatch(1));
     btnDraw.addEventListener('click', () => handleRotateMatch(0));
     btnWinT2.addEventListener('click', () => handleRotateMatch(2));
+
+    // Add Player Modal & Button Listener
+    const addPlayerBtn = document.getElementById('add-player-btn');
+    const addPlayerModal = document.getElementById('add-player-modal');
+    const closeAddPlayerModalBtn = document.getElementById('close-add-player-modal-btn');
+    const addPlayerForm = document.getElementById('add-player-form');
+
+    if (addPlayerBtn && addPlayerModal) {
+        addPlayerBtn.addEventListener('click', () => {
+            addPlayerModal.classList.remove('hidden');
+            const nameInput = document.getElementById('player-name-input');
+            if (nameInput) {
+                nameInput.value = '';
+                nameInput.focus();
+            }
+        });
+    }
+
+    if (closeAddPlayerModalBtn && addPlayerModal) {
+        closeAddPlayerModalBtn.addEventListener('click', () => {
+            addPlayerModal.classList.add('hidden');
+        });
+    }
+
+    if (addPlayerModal) {
+        addPlayerModal.addEventListener('click', (e) => {
+            if (e.target === addPlayerModal) {
+                addPlayerModal.classList.add('hidden');
+            }
+        });
+    }
+
+    if (addPlayerForm) {
+        addPlayerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const nameInput = document.getElementById('player-name-input');
+            const isPayingInput = document.getElementById('add-is-paying');
+            const doCheckinInput = document.getElementById('add-do-checkin');
+
+            const name = nameInput ? nameInput.value.trim() : '';
+            if (!name) return;
+
+            const is_paying = isPayingInput ? isPayingInput.checked : false;
+            const do_checkin = doCheckinInput ? doCheckinInput.checked : false;
+
+            if (!activeSessionId) {
+                alert('Nenhuma sessão selecionada');
+                return;
+            }
+
+            try {
+                const adminKey = getAdminKey();
+                const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players`;
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        is_paying: is_paying,
+                        is_confirmed: true,
+                        do_checkin: do_checkin
+                    })
+                });
+
+                if (res.ok) {
+                    addPlayerModal.classList.add('hidden');
+                    loadSessionDetails(activeSessionId, activeSessionDate);
+                } else {
+                    const err = await res.json();
+                    alert(`Erro: ${err.detail || 'Falha ao adicionar jogador'}`);
+                }
+            } catch (err) {
+                console.error('Erro ao adicionar jogador:', err);
+            }
+        });
+    }
 
     // Queue FAB & Modal handlers
     const fabQueueBtn = document.getElementById('fab-queue-btn');
@@ -605,8 +872,11 @@ function renderMatchData(data) {
     // Render Next Team
     renderNextTeam(data.next_team);
 
+    // Render Pending Check-in list (All confirmed players who haven't checked in yet)
+    renderPendingCheckinList(data.all_players, data.is_admin);
+
     // Render Waiting Queue
-    renderMatchQueue(data.queue);
+    renderMatchQueue(data.queue, data.is_admin);
 
     // Update FAB queue count
     const fabQueueCount = document.getElementById('fab-queue-count');
@@ -652,7 +922,7 @@ function renderTeamPlayers(container, players, isAdmin) {
         const info = document.createElement('div');
         info.className = 'player-card-info';
         info.innerHTML = `
-            <span class="player-card-name">${p.name}</span>
+            <span class="player-card-name">${p.name} ${p.is_paying ? '💳' : ''}</span>
             <span class="player-card-stats">${p.matches_played} partida(s) • ${p.points} pts</span>
         `;
 
@@ -698,28 +968,84 @@ function renderNextTeam(nextPlayers) {
         card.className = 'next-player-card';
         card.innerHTML = `
             <span class="num-badge">PRÓXIMO #${index + 1}</span>
-            <h4>${p.name}</h4>
+            <h4>${p.name} ${p.is_paying ? '💳' : ''}</h4>
             <p>${p.cycles_waiting} rodada(s) esperando</p>
+            <div class="next-player-action" style="margin-top: 0.5rem;"></div>
         `;
+
+        const checkoutBtn = document.createElement('button');
+        checkoutBtn.className = 'btn-action-sm checkout';
+        checkoutBtn.textContent = '👋 Saiu';
+        checkoutBtn.onclick = () => handleCheckoutPlayer(p);
+        card.querySelector('.next-player-action').appendChild(checkoutBtn);
+
         nextTeamListEl.appendChild(card);
     });
 }
 
-function renderMatchQueue(queuePlayers) {
+function renderPendingCheckinList(allPlayers, isAdmin) {
+    const pendingContainer = document.getElementById('pending-checkin-list');
+    const pendingBadge = document.getElementById('pending-checkin-count');
+    if (!pendingContainer) return;
+
+    pendingContainer.innerHTML = '';
+    const pendingList = (allPlayers || []).filter(p => (p.is_confirmed || !p.has_arrived) && !p.has_arrived);
+
+    if (pendingBadge) pendingBadge.textContent = pendingList.length;
+
+    if (pendingList.length === 0) {
+        pendingContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); grid-column: 1/-1; padding: 0.8rem;">Todos os confirmados já fizeram check-in! ⚽</div>`;
+        return;
+    }
+
+    pendingList.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'pending-checkin-card';
+        const payStatus = p.is_paying ? `<span class="badge paid sm" style="font-size:0.75rem;">💳 Pago</span>` : `<span class="badge pending sm" style="font-size:0.75rem;">❌ Pendente</span>`;
+        card.innerHTML = `
+            <div class="player-info-sub">
+                <span class="player-name">${p.name}</span>
+                <div>${payStatus}</div>
+            </div>
+            <div class="card-action"></div>
+        `;
+
+        const checkinBtn = document.createElement('button');
+        checkinBtn.className = 'btn-action-sm checkin';
+        checkinBtn.textContent = '📍 Chegou';
+        checkinBtn.onclick = () => handleCheckinPlayer(p);
+        card.querySelector('.card-action').appendChild(checkinBtn);
+
+        pendingContainer.appendChild(card);
+    });
+}
+
+function renderMatchQueue(queuePlayers, isAdmin) {
     matchQueueListEl.innerHTML = '';
     if (!queuePlayers || queuePlayers.length === 0) {
-        matchQueueListEl.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Fila de espera vazia.</td></tr>`;
+        matchQueueListEl.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Fila de espera vazia.</td></tr>`;
         return;
     }
 
     queuePlayers.forEach((p, index) => {
         const tr = document.createElement('tr');
+        const payBadge = p.is_paying ? `<span class="status-badge paid" style="font-size:0.75rem;">💳 Pago</span>` : `<span class="status-badge pending" style="font-size:0.75rem;">❌ Pendente</span>`;
+
         tr.innerHTML = `
             <td>#${index + 1}</td>
             <td><strong>${p.name}</strong></td>
             <td>${p.cycles_waiting} rodada(s)</td>
-            <td>${p.matches_played} partida(s)</td>
+            <td>${payBadge}</td>
+            <td class="action-cell"></td>
         `;
+
+        const actionTd = tr.querySelector('.action-cell');
+        const checkoutBtn = document.createElement('button');
+        checkoutBtn.className = 'btn-action-sm checkout';
+        checkoutBtn.textContent = '👋 Saiu';
+        checkoutBtn.onclick = () => handleCheckoutPlayer(p);
+        actionTd.appendChild(checkoutBtn);
+
         matchQueueListEl.appendChild(tr);
     });
 }
@@ -774,4 +1100,5 @@ async function handlePlayerAction(action, playerId) {
         alert('Erro de conexão ao executar ação.');
     }
 }
+
 

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pernabot Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=4.1">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
 </head>
 
@@ -39,6 +39,7 @@
             <section id="players-view" class="view">
                 <div class="view-header-actions">
                     <button id="back-btn" class="btn secondary">← Voltar</button>
+                    <button id="add-player-btn" class="btn primary sm" title="Adicionar Participante">➕ Adicionar Jogador</button>
                     <button id="refresh-btn" class="btn secondary" title="Atualizar dados">🔄 Atualizar</button>
                 </div>
                 <div class="glass-card">
@@ -98,6 +99,7 @@
                                         <th>Nome</th>
                                         <th>Status de Presença</th>
                                         <th>Pagamento</th>
+                                        <th>Ações de Presença</th>
                                     </tr>
                                 </thead>
                                 <tbody id="presence-list">
@@ -109,6 +111,16 @@
 
                     <!-- Tab 3: Payment List -->
                     <div id="tab-payment" class="tab-content">
+                        <div class="payment-summary-card">
+                            <div class="payment-summary-info">
+                                <span>Status dos Pagamentos: <strong id="payment-count-text">0 / 0</strong></span>
+                                <span id="payment-percent-text" class="badge paid">0%</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div id="payment-progress-fill" class="progress-bar-fill" style="width: 0%;"></div>
+                            </div>
+                        </div>
+
                         <div class="table-container">
                             <table class="players-table">
                                 <thead>
@@ -116,6 +128,7 @@
                                         <th>#</th>
                                         <th>Nome</th>
                                         <th>Status de Pagamento</th>
+                                        <th>Ação de Pagamento</th>
                                     </tr>
                                 </thead>
                                 <tbody id="payment-list">
@@ -186,14 +199,14 @@
 
                 <!-- Floating Action Button for Queue -->
                 <button id="fab-queue-btn" class="fab-btn">
-                    📋 Fila de Espera (<span id="fab-queue-count">0</span>)
+                    📋 Fila & Check-in (<span id="fab-queue-count">0</span>)
                 </button>
 
                 <!-- Modal Sheet for Queue and Next Team -->
                 <div id="queue-modal" class="modal-overlay hidden">
                     <div class="modal-card glass-card">
                         <div class="modal-header">
-                            <h2>📋 Fila & Próximo Time</h2>
+                            <h2>📋 Fila, Check-in & Próximo Time</h2>
                             <button id="close-queue-modal-btn" class="btn-close">✕</button>
                         </div>
 
@@ -209,10 +222,21 @@
                                 </div>
                             </div>
 
+                            <!-- Pending Check-in Section -->
+                            <div class="modal-section" style="margin-top: 1.5rem;">
+                                <div class="section-title-bar">
+                                    <h3>📍 Confirmados Aguardando Check-in</h3>
+                                    <span id="pending-checkin-count" class="badge pending">0</span>
+                                </div>
+                                <div id="pending-checkin-list" class="pending-checkin-grid">
+                                    <!-- Pending checkin players injected here -->
+                                </div>
+                            </div>
+
                             <!-- Full Queue -->
                             <div class="modal-section" style="margin-top: 1.5rem;">
                                 <div class="section-title-bar">
-                                    <h3>📋 Fila de Espera Completa</h3>
+                                    <h3>📋 Fila de Espera na Quadra</h3>
                                 </div>
                                 <div class="table-container">
                                     <table class="players-table">
@@ -220,8 +244,9 @@
                                             <tr>
                                                 <th>Pos</th>
                                                 <th>Nome</th>
-                                                <th>Aguardando</th>
-                                                <th>Partidas</th>
+                                                <th>Status</th>
+                                                <th>Pagamento</th>
+                                                <th>Ações</th>
                                             </tr>
                                         </thead>
                                         <tbody id="match-queue-list">
@@ -237,7 +262,54 @@
         </main>
     </div>
 
-    <script src="/static/app.js?v=3"></script>
+    <!-- Modal for Adding Player -->
+    <div id="add-player-modal" class="modal-overlay hidden">
+        <div class="modal-card glass-card sm">
+            <div class="modal-header">
+                <h2>➕ Adicionar Participante</h2>
+                <button id="close-add-player-modal-btn" class="btn-close">✕</button>
+            </div>
+            <form id="add-player-form" class="modal-body">
+                <div class="form-group">
+                    <label for="player-name-input">Nome do Jogador</label>
+                    <input type="text" id="player-name-input" placeholder="Ex: Carlos Silva" required class="input-field">
+                </div>
+                <div class="form-group checkbox-group">
+                    <label><input type="checkbox" id="add-is-paying" checked> Pagamento Confirmado (Pago)</label>
+                </div>
+                <div class="form-group checkbox-group">
+                    <label><input type="checkbox" id="add-do-checkin" checked> Fazer Check-in imediato (Chegou)</label>
+                </div>
+                <div class="modal-actions" style="margin-top: 1.5rem;">
+                    <button type="submit" class="btn primary" style="width: 100%;">Salvar Jogador</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal for Dynamic Payment Confirmation on Check-in -->
+    <div id="confirm-pay-checkin-modal" class="modal-overlay hidden">
+        <div class="modal-card glass-card sm">
+            <div class="modal-header">
+                <h2>💳 Confirmar Pagamento & Check-in</h2>
+                <button id="close-confirm-modal-btn" class="btn-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem; line-height: 1.5; color: #e2e8f0;">
+                    O participante <strong id="modal-player-name" style="color: #38bdf8;"></strong> ainda consta com <span class="badge pending">Pagamento Pendente</span>.
+                </p>
+                <p style="margin-bottom: 1.5rem; line-height: 1.5; color: #94a3b8;">
+                    Deseja confirmar o pagamento e realizar o check-in de <strong id="modal-player-name-2"></strong> agora?
+                </p>
+                <div class="modal-actions" style="display: flex; gap: 0.75rem; flex-direction: column;">
+                    <button id="btn-confirm-pay-and-checkin" class="btn primary" style="background: linear-gradient(135deg, #10b981, #059669); font-weight: bold;">💳 Confirmar Pagamento & Fazer Check-in</button>
+                    <button id="btn-cancel-pay-checkin" class="btn secondary">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=5.1"></script>
 </body>
 
 </html>

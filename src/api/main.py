@@ -36,7 +36,15 @@ def serve_index():
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
     )
 
-app.mount("/static", StaticFiles(directory=frontend_path), name="static")
+class NoCacheStaticFiles(StaticFiles):
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
+app.mount("/static", NoCacheStaticFiles(directory=frontend_path), name="static")
 
 
 from pydantic import BaseModel
@@ -44,7 +52,10 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
 from src.services.session_service import get_session_by_hash, ensure_session_hashes
-from src.services.player_service import get_all_active_players, leave_presence
+from src.services.player_service import (
+    get_all_active_players, leave_presence, register_arrival, 
+    set_paying_status, confirm_presence, get_player
+)
 from src.engine.explainer import get_team_captains
 from src.engine.match import rotate_players, pull_next_player, sort_leaving_players, sort_entering_players
 
@@ -53,6 +64,16 @@ class RotateRequest(BaseModel):
 
 class PlayerActionRequest(BaseModel):
     player_id: int
+
+class PaymentActionRequest(BaseModel):
+    player_id: int
+    is_paying: bool
+
+class AddPlayerRequest(BaseModel):
+    name: str
+    is_paying: Optional[bool] = False
+    is_confirmed: Optional[bool] = True
+    do_checkin: Optional[bool] = False
 
 def format_iso_utc(dt):
     if not dt:
@@ -93,6 +114,8 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
     last_event_dt = last_log.created_at if last_log and last_log.created_at else session.created_at
     last_event_iso = format_iso_utc(last_event_dt)
     
+    all_session_players = db.query(models.Player).filter(models.Player.session_id == session.id).all()
+    
     def serialize_player(p):
         return {
             "id": p.id,
@@ -106,7 +129,10 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
             "wins": p.wins or 0,
             "draws": p.draws or 0,
             "losses": p.losses or 0,
-            "points": (p.wins or 0) * 3 + (p.draws or 0) * 1
+            "points": (p.wins or 0) * 3 + (p.draws or 0) * 1,
+            "is_confirmed": p.is_confirmed,
+            "has_arrived": p.has_arrived,
+            "is_paying": p.is_paying
         }
         
     return {
@@ -132,7 +158,8 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
             }
         },
         "next_team": [serialize_player(p) for p in next_team_players],
-        "queue": [serialize_player(p) for p in sorted_waiting]
+        "queue": [serialize_player(p) for p in sorted_waiting],
+        "all_players": [serialize_player(p) for p in all_session_players]
     }
 
 
@@ -227,6 +254,53 @@ def player_leave(public_hash: str, req: PlayerActionRequest, token: Optional[str
         
     return build_match_response(session, db, token)
 
+@app.post("/sessions/hash/{public_hash}/checkout")
+def player_checkout_hash(public_hash: str, req: PlayerActionRequest, token: Optional[str] = None, db: Session = Depends(get_db)):
+    session = get_session_by_hash(db, public_hash)
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+        
+    player = db.query(models.Player).filter(models.Player.session_id == session.id, models.Player.id == req.player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Jogador não encontrado")
+        
+    success, was_playing = leave_presence(db, session.id, name=player.name, telegram_id=player.telegram_id)
+    if was_playing:
+        active_players = get_all_active_players(db, session.id)
+        pull_next_player(active_players)
+        db.commit()
+        
+    return build_match_response(session, db, token)
+
+@app.post("/sessions/hash/{public_hash}/checkin")
+def player_checkin_hash(public_hash: str, req: PlayerActionRequest, token: Optional[str] = None, db: Session = Depends(get_db)):
+    session = get_session_by_hash(db, public_hash)
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+        
+    player = db.query(models.Player).filter(models.Player.session_id == session.id, models.Player.id == req.player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Jogador não encontrado")
+        
+    if not player.is_paying:
+        raise HTTPException(status_code=400, detail="O jogador precisa estar com o pagamento confirmado para realizar o check-in.")
+        
+    register_arrival(db, session.id, name=player.name, telegram_id=player.telegram_id)
+    return build_match_response(session, db, token)
+
+@app.post("/sessions/hash/{public_hash}/pagamento")
+def player_payment_hash(public_hash: str, req: PaymentActionRequest, token: Optional[str] = None, db: Session = Depends(get_db)):
+    session = get_session_by_hash(db, public_hash)
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+        
+    player = db.query(models.Player).filter(models.Player.session_id == session.id, models.Player.id == req.player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Jogador não encontrado")
+        
+    set_paying_status(db, session.id, name=player.name, is_paying=req.is_paying, telegram_id=player.telegram_id)
+    return build_match_response(session, db, token)
+
 @app.get("/sessions/{session_id}/players")
 def list_players(session_id: int, key: Optional[str] = None, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     check_admin_key(key)
@@ -277,4 +351,84 @@ def list_players(session_id: int, key: Optional[str] = None, db: Session = Depen
     result.sort(key=lambda x: (x["points"], x["wins"], x["matches_played"]), reverse=True)
     
     return result
+
+@app.post("/sessions/{session_id}/players/{player_id}/checkin")
+def session_player_checkin(session_id: int, player_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Jogador não encontrado")
+    if not player.is_paying:
+        raise HTTPException(status_code=400, detail="O jogador precisa estar com o pagamento confirmado para realizar o check-in.")
+    register_arrival(db, session_id, name=player.name, telegram_id=player.telegram_id)
+    return {"message": f"Check-in realizado com sucesso para {player.name}"}
+
+@app.post("/sessions/{session_id}/players/{player_id}/checkout")
+def session_player_checkout(session_id: int, player_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Jogador não encontrado")
+    success, was_playing = leave_presence(db, session_id, name=player.name, telegram_id=player.telegram_id)
+    if was_playing:
+        active_players = get_all_active_players(db, session_id)
+        pull_next_player(active_players)
+        db.commit()
+    return {"message": f"Checkout realizado com sucesso para {player.name}"}
+
+@app.post("/sessions/{session_id}/players/{player_id}/pagamento")
+def session_player_payment(session_id: int, player_id: int, req: PaymentActionRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Jogador não encontrado")
+    set_paying_status(db, session_id, name=player.name, is_paying=req.is_paying, telegram_id=player.telegram_id)
+    return {"message": f"Status de pagamento atualizado para {player.name}"}
+
+@app.post("/sessions/{session_id}/players")
+def add_session_player(session_id: int, req: AddPlayerRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nome do jogador é obrigatório")
+        
+    player = get_player(db, session_id, name=name)
+    if not player:
+        player = models.Player(
+            session_id=session_id,
+            name=name,
+            is_confirmed=bool(req.is_confirmed or req.do_checkin),
+            is_paying=bool(req.is_paying)
+        )
+        db.add(player)
+        db.commit()
+        db.refresh(player)
+    else:
+        if req.is_confirmed:
+            player.is_confirmed = True
+        if req.is_paying is not None:
+            player.is_paying = req.is_paying
+        db.commit()
+        
+    if req.do_checkin:
+        if not player.is_paying:
+            player.is_paying = True
+            db.commit()
+        register_arrival(db, session_id, name=player.name)
+        
+    return {"message": f"Jogador {player.name} adicionado/atualizado com sucesso", "player_id": player.id}
+
 

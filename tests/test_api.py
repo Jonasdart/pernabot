@@ -103,3 +103,39 @@ def test_get_match_by_hash(client_and_db):
     assert data["last_event_time"] is not None
     assert "+" in data["last_event_time"] or "Z" in data["last_event_time"]
 
+def test_checkin_checkout_payment_endpoints(client_and_db):
+    client, session_id = client_and_db
+    
+    # 1. Add player without payment
+    add_resp = client.post(f"/sessions/{session_id}/players", json={"name": "Novato", "is_paying": False, "is_confirmed": True})
+    assert add_resp.status_code == 200
+    p_id = add_resp.json()["player_id"]
+    
+    # 2. Try checkin without paying -> 400
+    chk_resp = client.post(f"/sessions/{session_id}/players/{p_id}/checkin")
+    assert chk_resp.status_code == 400
+    assert "pagamento confirmado" in chk_resp.json()["detail"]
+    
+    # 3. Confirm payment
+    pay_resp = client.post(f"/sessions/{session_id}/players/{p_id}/pagamento", json={"player_id": p_id, "is_paying": True})
+    assert pay_resp.status_code == 200
+    
+    # 4. Do checkin -> success
+    chk_success = client.post(f"/sessions/{session_id}/players/{p_id}/checkin")
+    assert chk_success.status_code == 200
+    
+    # Verify arrived
+    players = client.get(f"/sessions/{session_id}/players").json()
+    p_data = next(p for p in players if p["id"] == p_id)
+    assert p_data["has_arrived"] is True
+    assert p_data["is_paying"] is True
+    
+    # 5. Do checkout -> success
+    out_resp = client.post(f"/sessions/{session_id}/players/{p_id}/checkout")
+    assert out_resp.status_code == 200
+    
+    players_after = client.get(f"/sessions/{session_id}/players").json()
+    p_data_after = next(p for p in players_after if p["id"] == p_id)
+    assert p_data_after["has_arrived"] is False
+
+
