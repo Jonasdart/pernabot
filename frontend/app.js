@@ -59,6 +59,20 @@ let sortField = 'pts';
 let sortDirection = 'desc';
 
 // Initialize
+function openModal(el) {
+    if (!el) return;
+    el.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+}
+
+function closeModal(el) {
+    if (!el) return;
+    el.classList.add('hidden');
+    // Only remove modal-open if no other modal is visible
+    const anyOpen = document.querySelectorAll('.modal-overlay:not(.hidden)');
+    if (anyOpen.length === 0) document.body.classList.remove('modal-open');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setupTabs();
     setupSorting();
@@ -398,18 +412,18 @@ function renderStatsTable(players) {
         const losses = player.losses || 0;
 
         el.innerHTML = `
-            <td>#${player.rank}</td>
-            <td><strong>${player.name}</strong></td>
-            <td>${player.matches_played}</td>
-            <td>
+            <td data-label="">#${player.rank}</td>
+            <td data-label="Nome"><strong>${player.name}</strong></td>
+            <td data-label="Partidas">${player.matches_played}</td>
+            <td data-label="Frag">
                 <span class="frag-badge">
                     <span class="frag-item win" title="Vitórias">${wins}V</span>
                     <span class="frag-item draw" title="Empates">${draws}E</span>
                     <span class="frag-item loss" title="Derrotas">${losses}D</span>
                 </span>
             </td>
-            <td><span class="pts-badge">${player.points} pts</span></td>
-            <td><span class="time-badge">⏱️ ${timeText}</span></td>
+            <td data-label="PTS"><span class="pts-badge">${player.points} pts</span></td>
+            <td data-label="Tempo"><span class="time-badge">⏱️ ${timeText}</span></td>
         `;
         playersList.appendChild(el);
     });
@@ -442,10 +456,10 @@ function renderPresenceTable(players) {
             : `<span class="status-badge pending">❌ Pendente</span>`;
 
         el.innerHTML = `
-            <td>#${index + 1}</td>
-            <td><strong>${player.name}</strong></td>
-            <td>${statusBadge}</td>
-            <td>${payBadge}</td>
+            <td data-label="">#${index + 1}</td>
+            <td data-label="Nome"><strong>${player.name}</strong></td>
+            <td data-label="Status">${statusBadge}</td>
+            <td data-label="Pagamento">${payBadge}</td>
             <td class="action-cell"></td>
         `;
 
@@ -497,9 +511,9 @@ function renderPaymentTable(players) {
             : `<span class="status-badge pending">❌ Pendente</span>`;
 
         el.innerHTML = `
-            <td>#${index + 1}</td>
-            <td><strong>${player.name}</strong></td>
-            <td>${payBadge}</td>
+            <td data-label="">#${index + 1}</td>
+            <td data-label="Nome"><strong>${player.name}</strong></td>
+            <td data-label="Pagamento">${payBadge}</td>
             <td class="action-cell"></td>
         `;
 
@@ -534,6 +548,7 @@ function promptPaymentCheckin(player, onSuccess) {
     if (!confirmModal) return;
 
     confirmModal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
 
     const confirmBtn = document.getElementById('btn-confirm-pay-and-checkin');
     const cancelBtn = document.getElementById('btn-cancel-pay-checkin');
@@ -541,6 +556,8 @@ function promptPaymentCheckin(player, onSuccess) {
 
     const cleanup = () => {
         confirmModal.classList.add('hidden');
+        const anyOpen = document.querySelectorAll('.modal-overlay:not(.hidden)');
+        if (anyOpen.length === 0) document.body.classList.remove('modal-open');
         if (confirmBtn) confirmBtn.onclick = null;
         if (cancelBtn) cancelBtn.onclick = null;
         if (closeBtn) closeBtn.onclick = null;
@@ -698,7 +715,7 @@ function setupMatchViewListeners() {
 
     if (addPlayerBtn && addPlayerModal) {
         addPlayerBtn.addEventListener('click', () => {
-            addPlayerModal.classList.remove('hidden');
+            openModal(addPlayerModal);
             const nameInput = document.getElementById('player-name-input');
             if (nameInput) {
                 nameInput.value = '';
@@ -709,14 +726,14 @@ function setupMatchViewListeners() {
 
     if (closeAddPlayerModalBtn && addPlayerModal) {
         closeAddPlayerModalBtn.addEventListener('click', () => {
-            addPlayerModal.classList.add('hidden');
+            closeModal(addPlayerModal);
         });
     }
 
     if (addPlayerModal) {
         addPlayerModal.addEventListener('click', (e) => {
             if (e.target === addPlayerModal) {
-                addPlayerModal.classList.add('hidden');
+                closeModal(addPlayerModal);
             }
         });
     }
@@ -754,7 +771,7 @@ function setupMatchViewListeners() {
                 });
 
                 if (res.ok) {
-                    addPlayerModal.classList.add('hidden');
+                    closeModal(addPlayerModal);
                     loadSessionDetails(activeSessionId, activeSessionDate);
                 } else {
                     const err = await res.json();
@@ -836,20 +853,20 @@ function setupMatchViewListeners() {
 
     if (fabQueueBtn && queueModal) {
         fabQueueBtn.addEventListener('click', () => {
-            queueModal.classList.remove('hidden');
+            openModal(queueModal);
         });
     }
 
     if (closeQueueModalBtn && queueModal) {
         closeQueueModalBtn.addEventListener('click', () => {
-            queueModal.classList.add('hidden');
+            closeModal(queueModal);
         });
     }
 
     if (queueModal) {
         queueModal.addEventListener('click', (e) => {
             if (e.target === queueModal) {
-                queueModal.classList.add('hidden');
+                closeModal(queueModal);
             }
         });
     }
@@ -1095,10 +1112,10 @@ function renderMatchQueue(queuePlayers, isAdmin) {
         const payBadge = p.is_paying ? `<span class="status-badge paid" style="font-size:0.75rem;">💳 Pago</span>` : `<span class="status-badge pending" style="font-size:0.75rem;">❌ Pendente</span>`;
 
         tr.innerHTML = `
-            <td>#${index + 1}</td>
-            <td><strong>${p.name}</strong></td>
-            <td>${p.cycles_waiting} rodada(s)</td>
-            <td>${payBadge}</td>
+            <td data-label="">#${index + 1}</td>
+            <td data-label="Nome"><strong>${p.name}</strong></td>
+            <td data-label="Rodadas">${p.cycles_waiting} rodada(s)</td>
+            <td data-label="Pagamento">${payBadge}</td>
             <td class="action-cell"></td>
         `;
 

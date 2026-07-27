@@ -69,6 +69,7 @@ body {
     max-width: 1000px;
     margin: 0 auto;
     padding: 2rem;
+    padding-bottom: 6rem; /* space for FAB */
 }
 
 .header {
@@ -125,19 +126,21 @@ body {
 /* Sessions List */
 .sessions-list {
     display: grid;
-    gap: 1rem;
+    gap: 0.75rem;
 }
 
 .session-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1.5rem;
+    gap: 0.75rem;
+    padding: 1.2rem 1.5rem;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
     cursor: pointer;
     transition: all 0.3s ease;
+    flex-wrap: wrap;
 }
 
 .session-item:hover {
@@ -178,28 +181,29 @@ body {
 /* Stats */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
 }
 
 .stat-box {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--glass-border);
-    padding: 1.5rem;
+    padding: 1rem 0.75rem;
     border-radius: 16px;
     text-align: center;
 }
 
 .stat-box h3 {
     color: var(--text-muted);
-    font-size: 1rem;
-    font-weight: 400;
-    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-bottom: 0.3rem;
+    line-height: 1.2;
 }
 
 .stat-box p {
-    font-size: 2.5rem;
+    font-size: 1.8rem;
     font-weight: 800;
     color: var(--primary);
 }
@@ -321,7 +325,9 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .view-header-actions .btn {
@@ -405,16 +411,20 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Responsive */
+/* Responsive - tablet */
 @media (max-width: 768px) {
     .container {
         padding: 1rem;
+        padding-bottom: 6rem;
     }
     .header h1 {
         font-size: 2.2rem;
     }
     .glass-card {
-        padding: 1.5rem;
+        padding: 1.2rem;
+    }
+    .glass-card h2 {
+        font-size: 1.4rem;
     }
     .tabs-nav {
         flex-wrap: wrap;
@@ -424,22 +434,31 @@ body {
 /* Tabs Navigation */
 .tabs-nav {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.4rem;
     margin-bottom: 1.5rem;
     border-bottom: 1px solid var(--glass-border);
     padding-bottom: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.tabs-nav::-webkit-scrollbar {
+    display: none;
 }
 
 .tab-btn {
     background: transparent;
     border: none;
     color: var(--text-muted);
-    padding: 0.6rem 1.2rem;
+    padding: 0.6rem 1rem;
     border-radius: 10px;
     cursor: pointer;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     font-weight: 600;
     transition: all 0.3s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .tab-btn:hover {
@@ -852,6 +871,8 @@ body {
     align-items: flex-end;
     opacity: 1;
     transition: opacity 0.3s ease;
+    overscroll-behavior: contain;
+    touch-action: none; /* prevent background scroll on touch */
 }
 
 .modal-overlay.hidden {
@@ -875,6 +896,7 @@ body {
     overflow: hidden;
     animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6);
+    touch-action: pan-y; /* allow vertical touch scrolling inside */
 }
 
 @keyframes slideUp {
@@ -921,6 +943,16 @@ body {
     padding: 1.5rem;
     overflow-y: auto;
     flex: 1;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y; /* allow vertical scroll inside modal */
+}
+
+/* Prevent body scroll when modal is open */
+body.modal-open {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
 }
 
 @media (min-width: 641px) {
@@ -934,6 +966,7 @@ body {
 }
 
 @media (max-width: 640px) {
+    /* Pitch grid stacks vertically */
     .pitch-grid {
         grid-template-columns: 1fr;
     }
@@ -944,14 +977,158 @@ body {
         border-right: none;
         border-left: 4px solid #ef4444;
     }
+    /* FAB position */
     .fab-btn {
         bottom: 1rem;
         right: 1rem;
-        padding: 0.8rem 1.3rem;
-        font-size: 0.9rem;
+        left: 1rem;
+        width: calc(100% - 2rem);
+        justify-content: center;
+        border-radius: 16px;
+        font-size: 0.95rem;
+        padding: 0.9rem 1.2rem;
     }
+    /* Admin action buttons stack */
     .match-actions-grid {
         grid-template-columns: 1fr;
+    }
+    /* Session item: info takes full row, badges below */
+    .session-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .session-item > div:last-child {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    /* Stats grid: 3 equal columns, smaller text */
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+    }
+    .stat-box {
+        padding: 0.7rem 0.4rem;
+    }
+    .stat-box h3 {
+        font-size: 0.65rem;
+    }
+    .stat-box p {
+        font-size: 1.4rem;
+    }
+    /* View header: buttons wrap and shrink */
+    .view-header-actions {
+        gap: 0.4rem;
+    }
+    .view-header-actions .btn {
+        font-size: 0.8rem;
+        padding: 0.5rem 0.8rem;
+    }
+    /* Player cards in admin mode: stack info and actions */
+    .player-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.6rem;
+    }
+    .player-card-actions {
+        width: 100%;
+    }
+    .player-card-actions .btn-action-sm {
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+        padding: 0.5rem 0.4rem;
+        font-size: 0.8rem;
+    }
+    /* Modal adjustments */
+    .modal-card.sm {
+        max-width: 100%;
+    }
+    /* Glass card padding on mobile */
+    .glass-card {
+        padding: 1rem;
+        border-radius: 16px;
+    }
+    /* Table: responsive card layout */
+    .players-table thead {
+        display: none;
+    }
+    .players-table,
+    .players-table tbody,
+    .players-table tr,
+    .players-table td {
+        display: block;
+        width: 100%;
+    }
+    .players-table tbody tr {
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        padding: 0.75rem;
+        margin-bottom: 0.6rem;
+        background: rgba(255,255,255,0.02);
+        position: relative;
+    }
+    .players-table tbody tr:hover {
+        background: rgba(255,255,255,0.05);
+    }
+    .players-table td {
+        padding: 0.25rem 0;
+        border-bottom: none;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .players-table td::before {
+        content: attr(data-label);
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        min-width: 70px;
+        flex-shrink: 0;
+    }
+    .players-table td:first-child {
+        font-size: 0.8rem;
+        color: var(--primary);
+    }
+    /* Hide the # column label on first td */
+    .players-table td:first-child::before {
+        display: none;
+    }
+    .players-table td.action-cell {
+        justify-content: flex-end;
+        margin-top: 0.3rem;
+        padding-top: 0.4rem;
+        border-top: 1px solid var(--glass-border);
+    }
+    .players-table td.action-cell::before {
+        display: none;
+    }
+    /* Pending check-in grid: single column */
+    .pending-checkin-grid {
+        grid-template-columns: 1fr;
+    }
+    /* Next team grid: 2 columns */
+    .next-team-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    /* Section title bar */
+    .section-title-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    /* Match timer compact */
+    .match-timer-header {
+        gap: 0.5rem;
+    }
+    .timer-time {
+        font-size: 1.8rem;
+    }
+    /* Team title smaller */
+    .team-title {
+        font-size: 1.1rem;
     }
 }
 
@@ -1032,8 +1209,8 @@ body {
 /* Pending Check-in Grid & Card */
 .pending-checkin-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 0.8rem;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.75rem;
 }
 
 .pending-checkin-card {
