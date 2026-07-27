@@ -83,6 +83,11 @@ document.addEventListener('DOMContentLoaded', () => {
         showView('sessions');
     });
 
+    const drawTeamsBtn = document.getElementById('draw-teams-btn');
+    if (drawTeamsBtn) {
+        drawTeamsBtn.addEventListener('click', handleDrawTeams);
+    }
+
     const resetPeladaBtn = document.getElementById('reset-pelada-btn');
     if (resetPeladaBtn) {
         resetPeladaBtn.addEventListener('click', () => handleRestartPelada(false));
@@ -713,11 +718,6 @@ function setupMatchViewListeners() {
     btnDraw.addEventListener('click', () => handleRotateMatch(0));
     btnWinT2.addEventListener('click', () => handleRotateMatch(2));
 
-    const btnRestartMatch = document.getElementById('btn-restart-match');
-    if (btnRestartMatch) {
-        btnRestartMatch.addEventListener('click', () => handleRestartPelada(true));
-    }
-
 
     // Add Player Modal & Button Listener
     const addPlayerBtn = document.getElementById('add-player-btn');
@@ -1202,27 +1202,12 @@ async function handlePlayerAction(action, playerId) {
     }
 }
 
-async function handleRestartPelada(isFromMatchView) {
+async function handleRestartPelada() {
     const confirmMsg = "Tem certeza que deseja recomeçar a pelada?\n\nA pelada atual será encerrada e salva no histórico, e uma NOVA pelada será iniciada mantendo apenas a lista de jogadores pagantes.";
     if (!confirm(confirmMsg)) return;
 
     try {
-        if (isFromMatchView && currentPublicHash && currentAdminToken) {
-            const url = `${API_BASE}/sessions/hash/${currentPublicHash}/recomecar?token=${encodeURIComponent(currentAdminToken)}`;
-            const response = await fetch(url, { method: 'POST' });
-            if (!response.ok) {
-                const err = await response.json();
-                alert(`Erro: ${err.detail || 'Falha ao recomeçar a pelada'}`);
-                return;
-            }
-            const data = await response.json();
-            if (data.public_hash) {
-                currentPublicHash = data.public_hash;
-                window.location.hash = `#/match/${data.public_hash}?admin=${encodeURIComponent(currentAdminToken)}`;
-            }
-            renderMatchData(data);
-            alert("🔄 Nova pelada iniciada com sucesso! A lista de pagantes foi mantida.");
-        } else if (activeSessionId) {
+        if (activeSessionId) {
             const adminKey = getAdminKey();
             const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/recomecar?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/recomecar`;
             const response = await fetch(url, { method: 'POST' });
@@ -1244,6 +1229,28 @@ async function handleRestartPelada(isFromMatchView) {
     } catch (err) {
         console.error('Erro ao recomeçar a pelada:', err);
         alert('Erro de conexão ao tentar recomeçar a pelada.');
+    }
+}
+
+async function handleDrawTeams() {
+    if (!activeSessionId) return;
+
+    if (!confirm('Deseja realizar o sorteio dos times para esta pelada?')) return;
+
+    try {
+        const adminKey = getAdminKey();
+        const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/sortear?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/sortear`;
+        const res = await fetch(url, { method: 'POST' });
+        if (res.ok) {
+            alert('🎲 Sorteio de times realizado com sucesso!');
+            await loadSessionDetails(activeSessionId, activeSessionDate);
+        } else {
+            const err = await res.json();
+            alert(`Erro: ${err.detail || 'Falha ao realizar o sorteio'}`);
+        }
+    } catch (e) {
+        console.error('Erro ao sortear times:', e);
+        alert('Erro de conexão ao tentar realizar o sorteio.');
     }
 }
 

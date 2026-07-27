@@ -57,7 +57,7 @@ from src.services.player_service import (
     set_paying_status, confirm_presence, get_player, restart_session
 )
 from src.engine.explainer import get_team_captains
-from src.engine.match import rotate_players, pull_next_player, sort_leaving_players, sort_entering_players
+from src.engine.match import draw_teams, rotate_players, pull_next_player, sort_leaving_players, sort_entering_players
 
 class RotateRequest(BaseModel):
     winner: int  # 0, 1, 2
@@ -478,6 +478,51 @@ def restart_session_by_id(session_id: int, key: Optional[str] = None, db: Sessio
         "public_hash": new_session.public_hash,
         "admin_token": new_session.admin_token
     }
+
+@app.post("/sessions/{session_id}/sortear")
+def draw_session_teams(session_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    
+    players = get_all_active_players(db, session_id)
+    if len(players) < 8:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"O sorteio só pode ser realizado com no mínimo 8 jogadores com chegada confirmada (na quadra). Atualmente: {len(players)}"
+        )
+    
+    draw_teams(players)
+    
+    match_log = models.MatchLog(session_id=session.id, event_type="draw", created_at=datetime.now(timezone.utc))
+    db.add(match_log)
+    db.commit()
+    
+    return {"message": "Sorteio realizado com sucesso!"}
+
+@app.post("/sessions/hash/{public_hash}/sortear")
+def draw_teams_by_hash(public_hash: str, token: Optional[str] = None, db: Session = Depends(get_db)):
+    session = get_session_by_hash(db, public_hash)
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    if not token or session.admin_token != token:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado: token de administrador inválido")
+        
+    players = get_all_active_players(db, session.id)
+    if len(players) < 8:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"O sorteio só pode ser realizado com no mínimo 8 jogadores com chegada confirmada. Atualmente: {len(players)}"
+        )
+        
+    draw_teams(players)
+    
+    match_log = models.MatchLog(session_id=session.id, event_type="draw", created_at=datetime.now(timezone.utc))
+    db.add(match_log)
+    db.commit()
+    
+    return build_match_response(session, db, token)
 
 
 

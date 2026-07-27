@@ -202,6 +202,24 @@ def test_public_hash_admin_authorization(client_and_db):
     add_resp = client.post(f"/sessions/hash/{public_hash}/adicionar?token={admin_token}", json={"name": "Convidado"})
     assert add_resp.status_code == 200
 
+def test_sortear_endpoint(client_and_db):
+    client, session_id = client_and_db
+    
+    # < 8 players should return 400
+    res_fail = client.post(f"/sessions/{session_id}/sortear")
+    assert res_fail.status_code == 400
+    assert "no mínimo 8 jogadores" in res_fail.json()["detail"]
+    
+    # Add enough players with arrival confirmed
+    for i in range(6):
+        add_res = client.post(f"/sessions/{session_id}/players", json={"name": f"Jogador_{i}", "is_paying": True, "do_checkin": True})
+        assert add_res.status_code == 200
+        
+    # Now we have 8 arrived players, sortear should succeed
+    res_ok = client.post(f"/sessions/{session_id}/sortear")
+    assert res_ok.status_code == 200
+    assert res_ok.json()["message"] == "Sorteio realizado com sucesso!"
+
 
 
 
