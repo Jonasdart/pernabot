@@ -138,4 +138,70 @@ def test_checkin_checkout_payment_endpoints(client_and_db):
     p_data_after = next(p for p in players_after if p["id"] == p_id)
     assert p_data_after["has_arrived"] is False
 
+def test_recomecar_endpoints(client_and_db, monkeypatch):
+    client, session_id = client_and_db
+    monkeypatch.setenv("ADMIN_KEY", "minha_senha")
+
+    # Mark Artilheiro as paying
+    players = client.get(f"/sessions/{session_id}/players?key=minha_senha").json()
+    artilheiro_id = next(p["id"] for p in players if p["name"] == "Artilheiro")
+    client.post(f"/sessions/{session_id}/players/{artilheiro_id}/pagamento?key=minha_senha", json={"player_id": artilheiro_id, "is_paying": True})
+
+    # Call restart via ID
+    res = client.post(f"/sessions/{session_id}/recomecar?key=minha_senha")
+    assert res.status_code == 200
+    res_data = res.json()
+    assert "new_session_id" in res_data
+    new_session_id = res_data["new_session_id"]
+    new_public_hash = res_data["public_hash"]
+    new_admin_token = res_data["admin_token"]
+
+    # Verify new session player list has only paying Artilheiro with stats 0
+    new_players = client.get(f"/sessions/{new_session_id}/players?key=minha_senha").json()
+    assert len(new_players) == 1
+    assert new_players[0]["name"] == "Artilheiro"
+    assert new_players[0]["is_paying"] is True
+    assert new_players[0]["matches_played"] == 0
+
+    # Call restart via hash with valid admin token
+    res_hash = client.post(f"/sessions/hash/{new_public_hash}/recomecar?token={new_admin_token}")
+    assert res_hash.status_code == 200
+    match_data = res_hash.json()
+    assert match_data["session_id"] != new_session_id
+    assert match_data["is_admin"] is True
+
+def test_public_hash_admin_authorization(client_and_db):
+    client, session_id = client_and_db
+    sessions_resp = client.get("/sessions")
+    s_data = sessions_resp.json()[0]
+    public_hash = s_data["public_hash"]
+    admin_token = s_data["admin_token"]
+    
+    # Get player id
+    match_resp = client.get(f"/sessions/hash/{public_hash}")
+    p_id = match_resp.json()["all_players"][0]["id"]
+    
+    # 1. Unauthenticated / invalid token calls should return 403
+    assert client.post(f"/sessions/hash/{public_hash}/checkin", json={"player_id": p_id}).status_code == 403
+    assert client.post(f"/sessions/hash/{public_hash}/checkout", json={"player_id": p_id}).status_code == 403
+    assert client.post(f"/sessions/hash/{public_hash}/pagamento", json={"player_id": p_id, "is_paying": True}).status_code == 403
+    assert client.post(f"/sessions/hash/{public_hash}/adicionar", json={"name": "Outro"}).status_code == 403
+    
+    assert client.post(f"/sessions/hash/{public_hash}/checkin?token=wrong", json={"player_id": p_id}).status_code == 403
+    
+    # 2. Authenticated calls with valid admin_token should succeed
+    pay_resp = client.post(f"/sessions/hash/{public_hash}/pagamento?token={admin_token}", json={"player_id": p_id, "is_paying": True})
+    assert pay_resp.status_code == 200
+    
+    chk_resp = client.post(f"/sessions/hash/{public_hash}/checkin?token={admin_token}", json={"player_id": p_id})
+    assert chk_resp.status_code == 200
+    
+    out_resp = client.post(f"/sessions/hash/{public_hash}/checkout?token={admin_token}", json={"player_id": p_id})
+    assert out_resp.status_code == 200
+    
+    add_resp = client.post(f"/sessions/hash/{public_hash}/adicionar?token={admin_token}", json={"name": "Convidado"})
+    assert add_resp.status_code == 200
+
+
+
 

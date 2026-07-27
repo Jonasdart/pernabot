@@ -11,8 +11,10 @@ from src.services.player_service import (
     register_arrival,
     set_paying_status,
     get_all_active_players,
-    get_paying_players
+    get_paying_players,
+    restart_session
 )
+
 
 @pytest.fixture
 def db_session():
@@ -73,3 +75,40 @@ def test_set_paying_status(db_session):
     paying_list = get_paying_players(db, session_id)
     assert len(paying_list) == 1
     assert paying_list[0].id == player.id
+
+def test_restart_session(db_session):
+    db, session_id = db_session
+
+    # Setup player 1: paying, arrived, played matches
+    p1 = confirm_presence(db, session_id, name="Pagante", telegram_id=501)
+    set_paying_status(db, session_id, name="Pagante", is_paying=True, telegram_id=501)
+    p1, _ = register_arrival(db, session_id, name="Pagante", telegram_id=501)
+    p1.matches_played = 4
+    p1.wins = 2
+    p1.is_playing = True
+    db.commit()
+
+    # Setup player 2: not paying, confirmed
+    p2 = confirm_presence(db, session_id, name="NaoPagante", telegram_id=502)
+
+    new_session = restart_session(db, session_id)
+    assert new_session is not None
+    assert new_session.id != session_id
+    assert new_session.is_active is True
+
+    # Check old session is inactive
+    old_session = db.query(PeladaSession).filter(PeladaSession.id == session_id).first()
+    assert old_session.is_active is False
+
+    # Check new session players: only paying players carried over
+    new_players = db.query(Player).filter(Player.session_id == new_session.id).all()
+    assert len(new_players) == 1
+    np = new_players[0]
+    assert np.name == "Pagante"
+    assert np.is_paying is True
+    assert np.is_confirmed is False
+    assert np.has_arrived is False
+    assert np.is_playing is False
+    assert np.matches_played == 0
+    assert np.wins == 0
+

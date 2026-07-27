@@ -83,6 +83,12 @@ document.addEventListener('DOMContentLoaded', () => {
         showView('sessions');
     });
 
+    const resetPeladaBtn = document.getElementById('reset-pelada-btn');
+    if (resetPeladaBtn) {
+        resetPeladaBtn.addEventListener('click', () => handleRestartPelada(false));
+    }
+
+
     if (refreshBtn) {
         refreshBtn.addEventListener('click', async () => {
             if (!activeSessionId) return;
@@ -707,6 +713,12 @@ function setupMatchViewListeners() {
     btnDraw.addEventListener('click', () => handleRotateMatch(0));
     btnWinT2.addEventListener('click', () => handleRotateMatch(2));
 
+    const btnRestartMatch = document.getElementById('btn-restart-match');
+    if (btnRestartMatch) {
+        btnRestartMatch.addEventListener('click', () => handleRestartPelada(true));
+    }
+
+
     // Add Player Modal & Button Listener
     const addPlayerBtn = document.getElementById('add-player-btn');
     const addPlayerModal = document.getElementById('add-player-modal');
@@ -917,12 +929,15 @@ function renderMatchData(data) {
     matchSessionLabel.textContent = `Pelada #${data.session_id} • ${data.is_active ? 'Em Andamento' : 'Finalizada'}`;
 
     // Admin Panel & Badge
+    const quickAddArrivalSection = document.getElementById('quick-add-arrival-section');
     if (data.is_admin) {
         adminBadge.classList.remove('hidden');
         adminControlsPanel.classList.remove('hidden');
+        if (quickAddArrivalSection) quickAddArrivalSection.classList.remove('hidden');
     } else {
         adminBadge.classList.add('hidden');
         adminControlsPanel.classList.add('hidden');
+        if (quickAddArrivalSection) quickAddArrivalSection.classList.add('hidden');
     }
 
     // Stopwatch logic
@@ -950,7 +965,7 @@ function renderMatchData(data) {
     renderTeamPlayers(team2PlayersEl, t2.players, data.is_admin);
 
     // Render Next Team
-    renderNextTeam(data.next_team);
+    renderNextTeam(data.next_team, data.is_admin);
 
     // Render Pending Check-in list (All confirmed players who haven't checked in yet)
     renderPendingCheckinList(data.all_players, data.is_admin);
@@ -1033,7 +1048,7 @@ function renderTeamPlayers(container, players, isAdmin) {
     });
 }
 
-function renderNextTeam(nextPlayers) {
+function renderNextTeam(nextPlayers, isAdmin) {
     nextTeamListEl.innerHTML = '';
     if (!nextPlayers || nextPlayers.length === 0) {
         nextTeamListEl.innerHTML = `<div style="text-align: center; color: var(--text-muted); grid-column: 1/-1; padding: 1rem;">Nenhum jogador aguardando na fila.</div>`;
@@ -1053,11 +1068,13 @@ function renderNextTeam(nextPlayers) {
             <div class="next-player-action" style="margin-top: 0.5rem;"></div>
         `;
 
-        const checkoutBtn = document.createElement('button');
-        checkoutBtn.className = 'btn-action-sm checkout';
-        checkoutBtn.textContent = '👋 Saiu';
-        checkoutBtn.onclick = () => handleCheckoutPlayer(p);
-        card.querySelector('.next-player-action').appendChild(checkoutBtn);
+        if (isAdmin) {
+            const checkoutBtn = document.createElement('button');
+            checkoutBtn.className = 'btn-action-sm checkout';
+            checkoutBtn.textContent = '👋 Saiu';
+            checkoutBtn.onclick = () => handleCheckoutPlayer(p);
+            card.querySelector('.next-player-action').appendChild(checkoutBtn);
+        }
 
         nextTeamListEl.appendChild(card);
     });
@@ -1090,11 +1107,13 @@ function renderPendingCheckinList(allPlayers, isAdmin) {
             <div class="card-action"></div>
         `;
 
-        const checkinBtn = document.createElement('button');
-        checkinBtn.className = 'btn-action-sm checkin';
-        checkinBtn.textContent = '📍 Chegou';
-        checkinBtn.onclick = () => handleCheckinPlayer(p);
-        card.querySelector('.card-action').appendChild(checkinBtn);
+        if (isAdmin) {
+            const checkinBtn = document.createElement('button');
+            checkinBtn.className = 'btn-action-sm checkin';
+            checkinBtn.textContent = '📍 Chegou';
+            checkinBtn.onclick = () => handleCheckinPlayer(p);
+            card.querySelector('.card-action').appendChild(checkinBtn);
+        }
 
         pendingContainer.appendChild(card);
     });
@@ -1119,12 +1138,14 @@ function renderMatchQueue(queuePlayers, isAdmin) {
             <td class="action-cell"></td>
         `;
 
-        const actionTd = tr.querySelector('.action-cell');
-        const checkoutBtn = document.createElement('button');
-        checkoutBtn.className = 'btn-action-sm checkout';
-        checkoutBtn.textContent = '👋 Saiu';
-        checkoutBtn.onclick = () => handleCheckoutPlayer(p);
-        actionTd.appendChild(checkoutBtn);
+        if (isAdmin) {
+            const actionTd = tr.querySelector('.action-cell');
+            const checkoutBtn = document.createElement('button');
+            checkoutBtn.className = 'btn-action-sm checkout';
+            checkoutBtn.textContent = '👋 Saiu';
+            checkoutBtn.onclick = () => handleCheckoutPlayer(p);
+            actionTd.appendChild(checkoutBtn);
+        }
 
         matchQueueListEl.appendChild(tr);
     });
@@ -1180,5 +1201,51 @@ async function handlePlayerAction(action, playerId) {
         alert('Erro de conexão ao executar ação.');
     }
 }
+
+async function handleRestartPelada(isFromMatchView) {
+    const confirmMsg = "Tem certeza que deseja recomeçar a pelada?\n\nA pelada atual será encerrada e salva no histórico, e uma NOVA pelada será iniciada mantendo apenas a lista de jogadores pagantes.";
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        if (isFromMatchView && currentPublicHash && currentAdminToken) {
+            const url = `${API_BASE}/sessions/hash/${currentPublicHash}/recomecar?token=${encodeURIComponent(currentAdminToken)}`;
+            const response = await fetch(url, { method: 'POST' });
+            if (!response.ok) {
+                const err = await response.json();
+                alert(`Erro: ${err.detail || 'Falha ao recomeçar a pelada'}`);
+                return;
+            }
+            const data = await response.json();
+            if (data.public_hash) {
+                currentPublicHash = data.public_hash;
+                window.location.hash = `#/match/${data.public_hash}?admin=${encodeURIComponent(currentAdminToken)}`;
+            }
+            renderMatchData(data);
+            alert("🔄 Nova pelada iniciada com sucesso! A lista de pagantes foi mantida.");
+        } else if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/recomecar?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/recomecar`;
+            const response = await fetch(url, { method: 'POST' });
+            if (!response.ok) {
+                const err = await response.json();
+                alert(`Erro: ${err.detail || 'Falha ao recomeçar a pelada'}`);
+                return;
+            }
+            const data = await response.json();
+            if (data.new_session_id) {
+                activeSessionId = data.new_session_id;
+            }
+            await loadSessions();
+            if (activeSessionId) {
+                await loadSessionDetails(activeSessionId, activeSessionDate);
+            }
+            alert("🔄 Nova pelada iniciada com sucesso! A lista de pagantes foi mantida.");
+        }
+    } catch (err) {
+        console.error('Erro ao recomeçar a pelada:', err);
+        alert('Erro de conexão ao tentar recomeçar a pelada.');
+    }
+}
+
 
 

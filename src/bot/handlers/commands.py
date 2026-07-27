@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 from src.database import SessionLocal
 from src.services.session_service import create_session, get_active_session
-from src.services.player_service import get_all_active_players
+from src.services.player_service import get_all_active_players, restart_session
 from src.engine.match import draw_teams, rotate_players
 from src.engine.explainer import generate_queue_explanation, generate_teams_explanation
 from src.bot.keyboards import get_dynamic_keyboard
@@ -159,10 +159,37 @@ async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
+async def cmd_restart_session(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    msg = update.message or update.callback_query.message
+    if update.callback_query:
+        await update.callback_query.answer()
+        
+    db = SessionLocal()
+    try:
+        active_session = get_active_session(db, chat_id)
+        if not active_session:
+            await msg.reply_text("Nenhuma pelada ativa.", reply_markup=get_dynamic_keyboard(db, chat_id))
+            return
+            
+        new_session = restart_session(db, active_session.id)
+        links_text = format_session_links(new_session)
+        reply = (
+            f"🔄 *Pelada Recomeçada!*\n\n"
+            f"A pelada anterior (#{active_session.id}) foi salva no histórico.\n"
+            f"Uma nova pelada (#{new_session.id}) foi iniciada mantendo a lista de pagantes!\n\n"
+            + links_text
+        )
+        await msg.reply_text(reply, parse_mode="Markdown", reply_markup=get_dynamic_keyboard(db, chat_id))
+    finally:
+        db.close()
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query.data
     if query == "cmd_nova_pelada":
         await cmd_new_session(update, context)
+    elif query == "cmd_recomecar":
+        await cmd_restart_session(update, context)
     elif query == "cmd_sortear":
         await cmd_draw(update, context)
     elif query in ["cmd_proximo", "cmd_venceu_t1", "cmd_venceu_t2", "cmd_empate"]:
@@ -175,6 +202,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 handlers = [
     CommandHandler("start", start),
     CommandHandler("nova_pelada", cmd_new_session),
+    CommandHandler("recomecar", cmd_restart_session),
     CommandHandler("sortear", cmd_draw),
     CommandHandler("proximo", cmd_rotate),
     CommandHandler("fila", cmd_queue),
@@ -182,4 +210,5 @@ handlers = [
     CommandHandler("links", cmd_link),
     CallbackQueryHandler(handle_callback)
 ]
+
 

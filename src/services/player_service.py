@@ -1,6 +1,10 @@
+import uuid
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy import func
 from src.models.player import Player
+from src.models.session import Session
+
 
 def get_player(db: DbSession, session_id: int, name: str = None, telegram_id: int = None):
     query = db.query(Player).filter(Player.session_id == session_id)
@@ -135,3 +139,56 @@ def set_paying_status(db: DbSession, session_id: int, name: str, is_paying: bool
     db.commit()
     db.refresh(player)
     return player
+
+def restart_session(db: DbSession, session_id: int):
+    old_session = db.query(Session).filter(Session.id == session_id).first()
+    if not old_session:
+        return None
+
+    old_session.is_active = False
+
+    public_hash = uuid.uuid4().hex[:8]
+    admin_token = uuid.uuid4().hex[8:24]
+
+    new_session = Session(
+        chat_id=old_session.chat_id,
+        is_active=True,
+        public_hash=public_hash,
+        admin_token=admin_token,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(new_session)
+    db.flush()
+
+    paying_players = db.query(Player).filter(
+        Player.session_id == old_session.id,
+        Player.is_paying == True
+    ).all()
+
+    for old_p in paying_players:
+        new_p = Player(
+            session_id=new_session.id,
+            name=old_p.name,
+            telegram_id=old_p.telegram_id,
+            telegram_username=old_p.telegram_username,
+            is_paying=True,
+            is_confirmed=False,
+            has_arrived=False,
+            is_playing=False,
+            matches_played=0,
+            wins=0,
+            draws=0,
+            losses=0,
+            cycles_in_court=0,
+            cycles_waiting=0,
+            arrival_order=0,
+            draw_weight=0.0,
+            initial_draw_order=9999,
+            team_slot=0
+        )
+        db.add(new_p)
+
+    db.commit()
+    db.refresh(new_session)
+    return new_session
+

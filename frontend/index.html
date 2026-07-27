@@ -39,9 +39,11 @@
             <section id="players-view" class="view">
                 <div class="view-header-actions">
                     <button id="back-btn" class="btn secondary">← Voltar</button>
+                    <button id="reset-pelada-btn" class="btn secondary danger-hover" title="Recomeçar Pelada">🔄 Recomeçar</button>
                     <button id="add-player-btn" class="btn primary sm" title="Adicionar Participante">➕ Adicionar Jogador</button>
                     <button id="refresh-btn" class="btn secondary" title="Atualizar dados">🔄 Atualizar</button>
                 </div>
+
                 <div class="glass-card">
                     <h2 id="session-title">Estatísticas da Pelada</h2>
                     <div class="stats-grid">
@@ -167,7 +169,11 @@
                         <button id="btn-draw" class="btn btn-action draw">🤝 Empatou</button>
                         <button id="btn-win-t2" class="btn btn-action win-t2">🏆 Venceu Time 2</button>
                     </div>
+                    <div style="margin-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1rem;">
+                        <button id="btn-restart-match" class="btn secondary" style="width: 100%; border-color: rgba(239, 68, 68, 0.4); color: #f87171; justify-content: center;">🔄 Recomeçar Pelada (Mantendo Pagantes)</button>
+                    </div>
                 </div>
+
 
                 <!-- Pitch Visualization (Team 1 vs Team 2) -->
                 <div class="pitch-container glass-card">
@@ -256,8 +262,8 @@
                                 </div>
                             </div>
 
-                            <!-- 4. Quick Add Arriving Player -->
-                            <div class="modal-section" style="margin-top: 1.5rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 12px; border: 1px dashed rgba(255,255,255,0.15);">
+                            <!-- 4. Quick Add Arriving Player (Admin only) -->
+                            <div id="quick-add-arrival-section" class="modal-section hidden" style="margin-top: 1.5rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 12px; border: 1px dashed rgba(255,255,255,0.15);">
                                 <div class="section-title-bar" style="margin-bottom: 0.5rem;">
                                     <h3 style="font-size: 0.95rem;">⚡ Registrar Chegada de Novo Jogador</h3>
                                 </div>

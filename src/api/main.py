@@ -54,7 +54,7 @@ from datetime import datetime, timezone
 from src.services.session_service import get_session_by_hash, ensure_session_hashes
 from src.services.player_service import (
     get_all_active_players, leave_presence, register_arrival, 
-    set_paying_status, confirm_presence, get_player
+    set_paying_status, confirm_presence, get_player, restart_session
 )
 from src.engine.explainer import get_team_captains
 from src.engine.match import rotate_players, pull_next_player, sort_leaving_players, sort_entering_players
@@ -259,6 +259,8 @@ def player_checkout_hash(public_hash: str, req: PlayerActionRequest, token: Opti
     session = get_session_by_hash(db, public_hash)
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    if not token or session.admin_token != token:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado: token de administrador inválido")
         
     player = db.query(models.Player).filter(models.Player.session_id == session.id, models.Player.id == req.player_id).first()
     if not player:
@@ -277,6 +279,8 @@ def player_checkin_hash(public_hash: str, req: PlayerActionRequest, token: Optio
     session = get_session_by_hash(db, public_hash)
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    if not token or session.admin_token != token:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado: token de administrador inválido")
         
     player = db.query(models.Player).filter(models.Player.session_id == session.id, models.Player.id == req.player_id).first()
     if not player:
@@ -293,6 +297,8 @@ def player_payment_hash(public_hash: str, req: PaymentActionRequest, token: Opti
     session = get_session_by_hash(db, public_hash)
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    if not token or session.admin_token != token:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado: token de administrador inválido")
         
     player = db.query(models.Player).filter(models.Player.session_id == session.id, models.Player.id == req.player_id).first()
     if not player:
@@ -306,6 +312,8 @@ def add_player_hash(public_hash: str, req: AddPlayerRequest, token: Optional[str
     session = get_session_by_hash(db, public_hash)
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    if not token or session.admin_token != token:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado: token de administrador inválido")
         
     confirm_presence(db, session.id, name=req.name)
     if req.is_paying:
@@ -444,5 +452,32 @@ def add_session_player(session_id: int, req: AddPlayerRequest, key: Optional[str
         register_arrival(db, session_id, name=player.name)
         
     return {"message": f"Jogador {player.name} adicionado/atualizado com sucesso", "player_id": player.id}
+
+@app.post("/sessions/hash/{public_hash}/recomecar")
+def restart_session_by_hash(public_hash: str, token: Optional[str] = None, db: Session = Depends(get_db)):
+    session = get_session_by_hash(db, public_hash)
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    if not token or session.admin_token != token:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado. Token admin necessário.")
+    
+    new_session = restart_session(db, session.id)
+    return build_match_response(new_session, db, token=new_session.admin_token)
+
+@app.post("/sessions/{session_id}/recomecar")
+def restart_session_by_id(session_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    
+    new_session = restart_session(db, session_id)
+    return {
+        "message": "Pelada recomeçada com sucesso",
+        "new_session_id": new_session.id,
+        "public_hash": new_session.public_hash,
+        "admin_token": new_session.admin_token
+    }
+
 
 
