@@ -257,6 +257,86 @@ def test_sortear_endpoint(client_and_db):
     assert res_ok.status_code == 200
     assert res_ok.json()["message"] == "Sorteio realizado com sucesso!"
 
+def test_rotate_match_response(client_and_db):
+    client, session_id = client_and_db
+    sessions_resp = client.get("/sessions")
+    s_data = sessions_resp.json()[0]
+    public_hash = s_data["public_hash"]
+    admin_token = s_data["admin_token"]
+    
+    # Add 8 players
+    for i in range(8):
+        client.post(f"/sessions/{session_id}/players", json={"name": f"P_{i}", "is_paying": True, "do_checkin": True})
+        
+    client.post(f"/sessions/hash/{public_hash}/sortear?token={admin_token}")
+    
+    # Perform match rotation (winner = 1)
+    rotate_res = client.post(f"/sessions/hash/{public_hash}/vencer?token={admin_token}", json={"winner": 1})
+    assert rotate_res.status_code == 200
+    data = rotate_res.json()
+    
+    assert "last_result" in data
+    assert data["last_result"]["winner"] == 1
+    assert "winner_label" in data["last_result"]
+    assert "entering_players" in data
+    assert isinstance(data["entering_players"], list)
+    assert data["last_event_type"] == "rotate"
+
+def test_batch_player_actions(client_and_db):
+    client, session_id = client_and_db
+    sessions_resp = client.get("/sessions")
+    s_data = sessions_resp.json()[0]
+    public_hash = s_data["public_hash"]
+    admin_token = s_data["admin_token"]
+
+    # Add 3 unpaid/unarrived players
+    p1 = client.post(f"/sessions/{session_id}/players", json={"name": "Batch_1", "is_paying": False, "is_confirmed": True}).json()["player_id"]
+    p2 = client.post(f"/sessions/{session_id}/players", json={"name": "Batch_2", "is_paying": False, "is_confirmed": True}).json()["player_id"]
+    p3 = client.post(f"/sessions/{session_id}/players", json={"name": "Batch_3", "is_paying": False, "is_confirmed": True}).json()["player_id"]
+
+    # Test Batch Pay via Session ID endpoint
+    pay_res = client.post(f"/sessions/{session_id}/players/batch-action", json={
+        "player_ids": [p1, p2],
+        "action": "pay"
+    })
+    assert pay_res.status_code == 200
+    assert pay_res.json()["updated_count"] == 2
+
+    # Verify payment status
+    players_res = client.get(f"/sessions/{session_id}/players")
+    p_map = {p["id"]: p for p in players_res.json()}
+    assert p_map[p1]["is_paying"] is True
+    assert p_map[p2]["is_paying"] is True
+    assert p_map[p3]["is_paying"] is False
+
+    # Test Batch Checkin via Public Hash endpoint
+    checkin_res = client.post(f"/sessions/hash/{public_hash}/batch-action?token={admin_token}", json={
+        "player_ids": [p1, p2, p3],
+        "action": "checkin"
+    })
+    assert checkin_res.status_code == 200
+    match_data = checkin_res.json()
+    all_p_map = {p["id"]: p for p in match_data["all_players"]}
+    assert all_p_map[p1]["has_arrived"] is True
+    assert all_p_map[p2]["has_arrived"] is True
+    assert all_p_map[p3]["has_arrived"] is True
+    # Checkin auto-confirms payment for p3
+    assert all_p_map[p3]["is_paying"] is True
+
+    # Test Batch Checkout via Session ID endpoint
+    checkout_res = client.post(f"/sessions/{session_id}/players/batch-action", json={
+        "player_ids": [p1, p2],
+        "action": "checkout"
+    })
+    assert checkout_res.status_code == 200
+    players_res2 = client.get(f"/sessions/{session_id}/players")
+    p_map2 = {p["id"]: p for p in players_res2.json()}
+    assert p_map2[p1]["has_arrived"] is False
+    assert p_map2[p2]["has_arrived"] is False
+    assert p_map2[p3]["has_arrived"] is True
+
+
+
 
 
 

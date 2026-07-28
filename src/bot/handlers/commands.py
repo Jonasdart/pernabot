@@ -132,10 +132,12 @@ async def cmd_rotate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         db.commit()
         
-        explanation = generate_teams_explanation(players, title="🔄 *Rotação Realizada!*\n\n")
+        result_title = "🏆 *Resultado:* Time 1 Venceu!" if winner == 1 else ("🏆 *Resultado:* Time 2 Venceu!" if winner == 2 else "🤝 *Resultado:* Empate na partida!")
+        
+        explanation = generate_teams_explanation(players, title=f"🔄 *Rotação Realizada!*\n{result_title}\n\n")
         if entering:
             names = ", ".join(p.name for p in entering)
-            explanation = f"✅ **Entraram na quadra:** {names}\n\n" + explanation
+            explanation = f"🚀 *Novo time em quadra:* **{names}**\n\n" + explanation
             
         await msg.reply_text(explanation, parse_mode="Markdown", reply_markup=get_dynamic_keyboard(db, chat_id))
     finally:

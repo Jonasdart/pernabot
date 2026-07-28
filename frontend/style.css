@@ -1284,3 +1284,436 @@ body.modal-open {
     cursor: pointer;
 }
 
+/* ==========================================
+   Match Result Notification Banner & Court Glow
+   ========================================== */
+.match-result-banner {
+    margin-bottom: 1.5rem;
+    border-radius: 20px;
+    padding: 1.2rem 1.5rem;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(16, 185, 129, 0.2));
+    border: 1px solid rgba(245, 158, 11, 0.6);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 10px 30px rgba(245, 158, 11, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+    animation: bannerSlideDown 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: relative;
+    overflow: hidden;
+}
+
+.match-result-banner.draw-result {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(59, 130, 246, 0.25));
+    border: 1px solid rgba(139, 92, 246, 0.6);
+    box-shadow: 0 10px 30px rgba(139, 92, 246, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+.result-banner-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.result-banner-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    position: relative;
+}
+
+.result-icon-box {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    flex-shrink: 0;
+}
+
+.result-banner-icon {
+    font-size: 1.8rem;
+    animation: iconPulse 1.2s infinite ease-in-out alternate;
+}
+
+.result-banner-titles {
+    flex: 1;
+}
+
+.result-banner-titles h3 {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #ffffff;
+    margin-bottom: 0.1rem;
+    letter-spacing: 0.02em;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.result-banner-titles p {
+    font-size: 0.9rem;
+    color: #e2e8f0;
+    font-weight: 500;
+}
+
+.btn-close-sm {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.btn-close-sm:hover {
+    background: rgba(239, 68, 68, 0.4);
+    color: #ffffff;
+}
+
+.entering-players-section {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.entering-label-row {
+    font-size: 0.85rem;
+    color: #f1f5f9;
+    letter-spacing: 0.03em;
+}
+
+.entering-tags-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.entering-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 20px;
+    background: linear-gradient(135deg, rgba(0, 210, 255, 0.25), rgba(58, 123, 213, 0.25));
+    border: 1px solid rgba(0, 210, 255, 0.5);
+    color: #ffffff;
+    font-size: 0.88rem;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(0, 210, 255, 0.3);
+    animation: tagPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) backwards;
+}
+
+.entering-tag .badge-icon {
+    font-size: 0.95rem;
+}
+
+/* Pitch Glow Effect when rotation happens */
+.pitch-container.court-flash {
+    animation: pitchFlashGlow 1.8s ease-in-out;
+}
+
+.player-card.entering-highlight {
+    background: rgba(0, 210, 255, 0.18) !important;
+    border-color: rgba(0, 210, 255, 0.7) !important;
+    box-shadow: 0 0 16px rgba(0, 210, 255, 0.4) !important;
+    animation: cardPulseGlow 1.5s ease-in-out infinite alternate;
+}
+
+.player-card.entering-highlight .player-card-name {
+    color: #00d2ff !important;
+    text-shadow: 0 0 8px rgba(0, 210, 255, 0.5);
+}
+
+.new-entrant-badge {
+    font-size: 0.68rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #00d2ff, #3b82f6);
+    color: #ffffff;
+    padding: 0.15rem 0.5rem;
+    border-radius: 8px;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Keyframes */
+@keyframes bannerSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-25px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes iconPulse {
+    from { transform: scale(1); }
+    to { transform: scale(1.15) rotate(5deg); }
+}
+
+@keyframes tagPopIn {
+    from {
+        opacity: 0;
+        transform: scale(0.7) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes pitchFlashGlow {
+    0% {
+        box-shadow: 0 0 0px rgba(245, 158, 11, 0);
+        border-color: rgba(56, 189, 248, 0.3);
+    }
+    30% {
+        box-shadow: 0 0 40px rgba(245, 158, 11, 0.7), inset 0 0 20px rgba(245, 158, 11, 0.3);
+        border-color: rgba(245, 158, 11, 0.9);
+    }
+    100% {
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        border-color: rgba(56, 189, 248, 0.3);
+    }
+}
+
+@keyframes cardPulseGlow {
+    from {
+        box-shadow: 0 0 10px rgba(0, 210, 255, 0.3);
+    }
+    to {
+        box-shadow: 0 0 22px rgba(0, 210, 255, 0.7);
+    }
+}
+
+/* ==========================================
+   Batch Action Bar & Selection UX
+   ========================================== */
+.batch-action-bar {
+    position: fixed;
+    bottom: 1.8rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    width: calc(100% - 2rem);
+    max-width: 860px;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(0, 210, 255, 0.4);
+    border-radius: 24px;
+    padding: 0.85rem 1.4rem;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 24px rgba(0, 210, 255, 0.25);
+    animation: batchBarSlideUp 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.batch-action-bar.hidden {
+    display: none;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.batch-bar-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.batch-bar-info {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.batch-count-badge {
+    background: linear-gradient(135deg, #00d2ff, #3b82f6);
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 800;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 0.5rem;
+    border-radius: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 210, 255, 0.4);
+}
+
+.batch-info-text {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.batch-bar-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-chip {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #cbd5e1;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.35rem 0.75rem;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-chip:hover {
+    background: rgba(0, 210, 255, 0.2);
+    border-color: rgba(0, 210, 255, 0.5);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.batch-bar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.btn-batch {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.btn-batch.pay {
+    background: rgba(16, 185, 129, 0.25);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.5);
+}
+.btn-batch.pay:hover {
+    background: rgba(16, 185, 129, 0.45);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-batch.unpay {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.4);
+}
+.btn-batch.unpay:hover {
+    background: rgba(245, 158, 11, 0.4);
+    transform: translateY(-2px);
+}
+
+.btn-batch.checkin {
+    background: rgba(56, 189, 248, 0.25);
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.5);
+}
+.btn-batch.checkin:hover {
+    background: rgba(56, 189, 248, 0.45);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+}
+
+.btn-batch.checkout {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.4);
+}
+.btn-batch.checkout:hover {
+    background: rgba(239, 68, 68, 0.4);
+    transform: translateY(-2px);
+}
+
+.btn-batch.clear {
+    background: rgba(255, 255, 255, 0.1);
+    color: #94a3b8;
+    border-color: rgba(255, 255, 255, 0.15);
+    padding: 0.5rem;
+}
+.btn-batch.clear:hover {
+    background: rgba(239, 68, 68, 0.3);
+    color: #ffffff;
+}
+
+/* Checkbox & Highlighted Rows */
+.checkbox-cell {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.row-checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.players-table tr.selected-row {
+    background: rgba(0, 210, 255, 0.12) !important;
+    border-left: 3px solid #00d2ff !important;
+}
+
+/* Keyframes */
+@keyframes batchBarSlideUp {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 30px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+    }
+}
+
+@media (max-width: 640px) {
+    .batch-action-bar {
+        bottom: 1rem;
+        padding: 0.75rem 1rem;
+    }
+    .batch-bar-container {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.6rem;
+    }
+    .batch-bar-actions {
+        justify-content: space-between;
+    }
+    .btn-batch {
+        flex: 1;
+        justify-content: center;
+        font-size: 0.78rem;
+        padding: 0.45rem 0.6rem;
+    }
+}
+
+
+

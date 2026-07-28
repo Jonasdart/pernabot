@@ -74,6 +74,7 @@
                             <table class="players-table">
                                 <thead>
                                     <tr id="stats-table-header">
+                                        <th class="checkbox-cell" style="width: 40px;"><input type="checkbox" id="select-all-stats" title="Selecionar Todos"></th>
                                         <th class="sortable" data-sort="pos">Pos <span class="sort-icon"></span></th>
                                         <th class="sortable" data-sort="name">Nome <span class="sort-icon"></span></th>
                                         <th class="sortable" data-sort="matches">Partidas <span
@@ -98,6 +99,7 @@
                             <table class="players-table">
                                 <thead>
                                     <tr>
+                                        <th class="checkbox-cell" style="width: 40px;"><input type="checkbox" id="select-all-presence" title="Selecionar Todos"></th>
                                         <th>#</th>
                                         <th>Nome</th>
                                         <th>Status de Presença</th>
@@ -128,6 +130,7 @@
                             <table class="players-table">
                                 <thead>
                                     <tr>
+                                        <th class="checkbox-cell" style="width: 40px;"><input type="checkbox" id="select-all-payment" title="Selecionar Todos"></th>
                                         <th>#</th>
                                         <th>Nome</th>
                                         <th>Status de Pagamento</th>
@@ -148,6 +151,30 @@
                 <div class="view-header-actions">
                     <span id="admin-badge" class="badge admin-mode-badge hidden">⚡ Modo Gerenciador</span>
                     <button id="match-refresh-btn" class="btn secondary" title="Atualizar dados">🔄 Atualizar</button>
+                </div>
+
+                <!-- Match Result & Entering Players Notification Banner -->
+                <div id="match-result-notification" class="match-result-banner hidden">
+                    <div class="result-banner-content">
+                        <div class="result-banner-header">
+                            <div class="result-icon-box">
+                                <span id="result-banner-icon" class="result-banner-icon">🏆</span>
+                            </div>
+                            <div class="result-banner-titles">
+                                <h3 id="result-banner-title">Resultado Registrado!</h3>
+                                <p id="result-banner-subtitle">Time Vencedor marcou a vitória</p>
+                            </div>
+                            <button id="close-result-banner-btn" class="btn-close-sm" title="Fechar">✕</button>
+                        </div>
+                        <div id="result-banner-entering-section" class="entering-players-section">
+                            <div class="entering-label-row">
+                                <span>⚡ <strong>Novo Time em Quadra:</strong></span>
+                            </div>
+                            <div id="result-banner-entering-tags" class="entering-tags-list">
+                                <!-- Tags of entering players injected dynamically -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Match Live Header & Stopwatch -->
@@ -328,7 +355,28 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=7"></script>
+    <!-- Floating Batch Action Bar -->
+    <div id="batch-action-bar" class="batch-action-bar hidden">
+        <div class="batch-bar-container">
+            <div class="batch-bar-info">
+                <span id="batch-selected-count" class="batch-count-badge">0</span>
+                <span class="batch-info-text">selecionado(s)</span>
+            </div>
+            <div class="batch-bar-chips">
+                <button id="batch-chip-unpaid" class="btn-chip" title="Selecionar pendentes de pagamento">⚡ Pendentes</button>
+                <button id="batch-chip-unarrived" class="btn-chip" title="Selecionar quem ainda não chegou">⚡ Fora da Quadra</button>
+            </div>
+            <div class="batch-bar-actions">
+                <button id="batch-btn-pay" class="btn btn-batch pay" title="Marcar selecionados como pagos">💳 Marcar Pagos</button>
+                <button id="batch-btn-unpay" class="btn btn-batch unpay" title="Desmarcar pagamento dos selecionados">⚠️ Desmarcar Pagos</button>
+                <button id="batch-btn-checkin" class="btn btn-batch checkin" title="Confirmar chegada dos selecionados">🪑 Check-in / Liberar</button>
+                <button id="batch-btn-checkout" class="btn btn-batch checkout" title="Registrar saída dos selecionados">👋 Checkout</button>
+                <button id="batch-btn-clear" class="btn btn-batch clear" title="Limpar seleção">✕</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=8"></script>
 </body>
 
 </html>

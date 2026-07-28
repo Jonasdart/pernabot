@@ -40,6 +40,31 @@ const nextTeamListEl = document.getElementById('next-team-list');
 const matchQueueListEl = document.getElementById('match-queue-list');
 const nextTeamCountBadge = document.getElementById('next-team-count-badge');
 
+// Result Notification Banner Elements
+const matchResultNotification = document.getElementById('match-result-notification');
+const resultBannerIcon = document.getElementById('result-banner-icon');
+const resultBannerTitle = document.getElementById('result-banner-title');
+const resultBannerSubtitle = document.getElementById('result-banner-subtitle');
+const resultBannerEnteringSection = document.getElementById('result-banner-entering-section');
+const resultBannerEnteringTags = document.getElementById('result-banner-entering-tags');
+const closeResultBannerBtn = document.getElementById('close-result-banner-btn');
+
+// Batch Action Elements & Selection State
+const batchActionBar = document.getElementById('batch-action-bar');
+const batchSelectedCount = document.getElementById('batch-selected-count');
+const batchBtnPay = document.getElementById('batch-btn-pay');
+const batchBtnUnpay = document.getElementById('batch-btn-unpay');
+const batchBtnCheckin = document.getElementById('batch-btn-checkin');
+const batchBtnCheckout = document.getElementById('batch-btn-checkout');
+const batchBtnClear = document.getElementById('batch-btn-clear');
+const batchChipUnpaid = document.getElementById('batch-chip-unpaid');
+const batchChipUnarrived = document.getElementById('batch-chip-unarrived');
+const selectAllStats = document.getElementById('select-all-stats');
+const selectAllPresence = document.getElementById('select-all-presence');
+const selectAllPayment = document.getElementById('select-all-payment');
+
+const selectedPlayerIds = new Set();
+
 // State
 let currentSessions = [];
 let currentPlayers = [];
@@ -53,6 +78,9 @@ let pollInterval = null;
 let stopwatchInterval = null;
 let matchLastEventTime = null;
 let matchIsPlaying = false;
+let bannerDismissTimeout = null;
+let lastSeenRotationEventTime = null;
+let currentEnteringPlayerIds = new Set();
 
 // Sort State
 let sortField = 'pts';
@@ -421,8 +449,11 @@ function renderStatsTable(players) {
         const wins = player.wins || 0;
         const draws = player.draws || 0;
         const losses = player.losses || 0;
+        const isSelected = selectedPlayerIds.has(player.id);
+        if (isSelected) el.classList.add('selected-row');
 
         el.innerHTML = `
+            <td class="checkbox-cell" data-label="Selecionar"><input type="checkbox" class="row-checkbox" data-player-id="${player.id}" ${isSelected ? 'checked' : ''}></td>
             <td data-label="">#${player.rank}</td>
             <td data-label="Nome"><strong>${player.name}</strong></td>
             <td data-label="Partidas">${player.matches_played}</td>
@@ -436,6 +467,12 @@ function renderStatsTable(players) {
             <td data-label="PTS"><span class="pts-badge">${player.points} pts</span></td>
             <td data-label="Tempo"><span class="time-badge">⏱️ ${timeText}</span></td>
         `;
+
+        const cb = el.querySelector('.row-checkbox');
+        if (cb) {
+            cb.addEventListener('change', (e) => togglePlayerSelection(player.id, e.target.checked));
+        }
+
         playersList.appendChild(el);
     });
 }
@@ -446,12 +483,15 @@ function renderPresenceTable(players) {
     const presencePlayers = players.filter(p => p.is_confirmed || p.has_arrived);
 
     if (presencePlayers.length === 0) {
-        presenceList.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhuma presença confirmada.</td></tr>`;
+        presenceList.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Nenhuma presença confirmada.</td></tr>`;
         return;
     }
 
     presencePlayers.forEach((player, index) => {
         const el = document.createElement('tr');
+        const isSelected = selectedPlayerIds.has(player.id);
+        if (isSelected) el.classList.add('selected-row');
+
         let statusBadge = '';
 
         if (player.has_arrived) {
@@ -467,12 +507,18 @@ function renderPresenceTable(players) {
             : `<span class="status-badge pending">❌ Pendente</span>`;
 
         el.innerHTML = `
+            <td class="checkbox-cell" data-label="Selecionar"><input type="checkbox" class="row-checkbox" data-player-id="${player.id}" ${isSelected ? 'checked' : ''}></td>
             <td data-label="">#${index + 1}</td>
             <td data-label="Nome"><strong>${player.name}</strong></td>
             <td data-label="Status">${statusBadge}</td>
             <td data-label="Pagamento">${payBadge}</td>
             <td class="action-cell"></td>
         `;
+
+        const cb = el.querySelector('.row-checkbox');
+        if (cb) {
+            cb.addEventListener('change', (e) => togglePlayerSelection(player.id, e.target.checked));
+        }
 
         const actionTd = el.querySelector('.action-cell');
         if (player.has_arrived) {
@@ -522,22 +568,31 @@ function renderPaymentTable(players) {
     if (progressFillEl) progressFillEl.style.width = `${percent}%`;
 
     if (relevantPlayers.length === 0) {
-        paymentList.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhum jogador na lista.</td></tr>`;
+        paymentList.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum jogador na lista.</td></tr>`;
         return;
     }
 
     relevantPlayers.forEach((player, index) => {
         const el = document.createElement('tr');
+        const isSelected = selectedPlayerIds.has(player.id);
+        if (isSelected) el.classList.add('selected-row');
+
         let payBadge = player.is_paying
             ? `<span class="status-badge paid">💳 Pago</span>`
             : `<span class="status-badge pending">❌ Pendente</span>`;
 
         el.innerHTML = `
+            <td class="checkbox-cell" data-label="Selecionar"><input type="checkbox" class="row-checkbox" data-player-id="${player.id}" ${isSelected ? 'checked' : ''}></td>
             <td data-label="">#${index + 1}</td>
             <td data-label="Nome"><strong>${player.name}</strong></td>
             <td data-label="Pagamento">${payBadge}</td>
             <td class="action-cell"></td>
         `;
+
+        const cb = el.querySelector('.row-checkbox');
+        if (cb) {
+            cb.addEventListener('change', (e) => togglePlayerSelection(player.id, e.target.checked));
+        }
 
         const actionTd = el.querySelector('.action-cell');
         const togglePayBtn = document.createElement('button');
@@ -750,10 +805,231 @@ async function handleSetPayment(playerId, isPaying) {
 }
 
 // ==========================================
+// Rotation Feedback & Banner Animations
+// ==========================================
+
+function showRotationFeedback(winner, winnerLabel, enteringPlayers = []) {
+    if (!matchResultNotification) return;
+
+    if (bannerDismissTimeout) clearTimeout(bannerDismissTimeout);
+
+    // Track entering player IDs for highlighting pitch cards
+    if (enteringPlayers && enteringPlayers.length > 0) {
+        currentEnteringPlayerIds = new Set(enteringPlayers.map(p => p.id));
+    }
+
+    // Configure Banner Content based on result
+    if (winner === 0) {
+        matchResultNotification.classList.add('draw-result');
+        if (resultBannerIcon) resultBannerIcon.textContent = '🤝';
+        if (resultBannerTitle) resultBannerTitle.textContent = 'Empate na Partida!';
+        if (resultBannerSubtitle) resultBannerSubtitle.textContent = 'Rodada encerrada em empate e os times foram rodados!';
+    } else {
+        matchResultNotification.classList.remove('draw-result');
+        if (resultBannerIcon) resultBannerIcon.textContent = '🏆';
+        if (resultBannerTitle) resultBannerTitle.textContent = `${winnerLabel || 'Time Vencedor'} Venceu!`;
+        if (resultBannerSubtitle) resultBannerSubtitle.textContent = 'Vitória registrada com sucesso! Novo time lançado em quadra.';
+    }
+
+    // Render Entering Players Tags
+    if (resultBannerEnteringTags && resultBannerEnteringSection) {
+        resultBannerEnteringTags.innerHTML = '';
+        if (enteringPlayers && enteringPlayers.length > 0) {
+            resultBannerEnteringSection.classList.remove('hidden');
+            enteringPlayers.forEach(p => {
+                const tag = document.createElement('span');
+                tag.className = 'entering-tag';
+                tag.innerHTML = `<span class="badge-icon">⚡</span> ${p.name}`;
+                resultBannerEnteringTags.appendChild(tag);
+            });
+        } else {
+            resultBannerEnteringSection.classList.add('hidden');
+        }
+    }
+
+    // Display Notification Banner
+    matchResultNotification.classList.remove('hidden');
+
+    // Pitch Glow Animation
+    const pitchContainer = document.querySelector('.pitch-container');
+    if (pitchContainer) {
+        pitchContainer.classList.remove('court-flash');
+        // Force reflow for animation restart
+        void pitchContainer.offsetWidth;
+        pitchContainer.classList.add('court-flash');
+        setTimeout(() => pitchContainer.classList.remove('court-flash'), 1800);
+    }
+
+    // Auto-dismiss after 7 seconds
+    bannerDismissTimeout = setTimeout(hideRotationFeedback, 7000);
+}
+
+function hideRotationFeedback() {
+    if (bannerDismissTimeout) {
+        clearTimeout(bannerDismissTimeout);
+        bannerDismissTimeout = null;
+    }
+    if (matchResultNotification) {
+        matchResultNotification.classList.add('hidden');
+    }
+}
+
+// ==========================================
+// Batch Actions & Player Selection Logic
+// ==========================================
+
+function togglePlayerSelection(playerId, isSelected) {
+    if (isSelected) {
+        selectedPlayerIds.add(playerId);
+    } else {
+        selectedPlayerIds.delete(playerId);
+    }
+    updateBatchUI();
+}
+
+function clearPlayerSelection() {
+    selectedPlayerIds.clear();
+    updateBatchUI();
+}
+
+function updateBatchUI() {
+    const count = selectedPlayerIds.size;
+    if (batchSelectedCount) batchSelectedCount.textContent = count;
+    
+    if (count > 0 && batchActionBar) {
+        batchActionBar.classList.remove('hidden');
+    } else if (batchActionBar) {
+        batchActionBar.classList.add('hidden');
+    }
+
+    // Sync all row checkboxes and tr.selected-row classes
+    document.querySelectorAll('.row-checkbox').forEach(cb => {
+        const pId = parseInt(cb.dataset.playerId, 10);
+        const checked = selectedPlayerIds.has(pId);
+        cb.checked = checked;
+        const tr = cb.closest('tr');
+        if (tr) {
+            if (checked) tr.classList.add('selected-row');
+            else tr.classList.remove('selected-row');
+        }
+    });
+
+    // Sync select-all checkboxes
+    const allRowCBs = Array.from(document.querySelectorAll('.row-checkbox'));
+    const allChecked = allRowCBs.length > 0 && allRowCBs.every(cb => cb.checked);
+    [selectAllStats, selectAllPresence, selectAllPayment].forEach(headerCB => {
+        if (headerCB) headerCB.checked = allChecked;
+    });
+}
+
+function handleSelectAll(isSelectAll) {
+    document.querySelectorAll('.row-checkbox').forEach(cb => {
+        const pId = parseInt(cb.dataset.playerId, 10);
+        if (pId) {
+            if (isSelectAll) selectedPlayerIds.add(pId);
+            else selectedPlayerIds.delete(pId);
+        }
+    });
+    updateBatchUI();
+}
+
+function selectUnpaidPlayers() {
+    clearPlayerSelection();
+    currentPlayers.forEach(p => {
+        if (!p.is_paying) selectedPlayerIds.add(p.id);
+    });
+    updateBatchUI();
+}
+
+function selectUnarrivedPlayers() {
+    clearPlayerSelection();
+    currentPlayers.forEach(p => {
+        if (!p.has_arrived) selectedPlayerIds.add(p.id);
+    });
+    updateBatchUI();
+}
+
+async function executeBatchAction(action) {
+    if (selectedPlayerIds.size === 0) return;
+
+    const ids = Array.from(selectedPlayerIds);
+    const actionLabel = action === 'pay' ? 'confirmar pagamento de' :
+                        action === 'unpay' ? 'desmarcar pagamento de' :
+                        action === 'checkin' ? 'fazer check-in / liberar' :
+                        action === 'checkout' ? 'fazer checkout de' : 'processar';
+
+    if (!confirm(`Deseja realmente ${actionLabel} ${ids.length} jogador(es) selecionado(s)?`)) {
+        return;
+    }
+
+    try {
+        let response;
+        if (currentPublicHash && currentAdminToken) {
+            response = await fetch(`${API_BASE}/sessions/hash/${currentPublicHash}/batch-action?token=${encodeURIComponent(currentAdminToken)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_ids: ids, action: action })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                clearPlayerSelection();
+                renderMatchData(data, true);
+                return;
+            }
+        } else if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players/batch-action?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players/batch-action`;
+            response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_ids: ids, action: action })
+            });
+            if (response.ok) {
+                clearPlayerSelection();
+                loadSessionDetails(activeSessionId, activeSessionDate);
+                return;
+            }
+        }
+
+        if (response && !response.ok) {
+            const err = await response.json();
+            alert(`Erro na ação em lote: ${err.detail || 'Falha ao processar'}`);
+        }
+    } catch (e) {
+        console.error('Erro na ação em lote:', e);
+        alert('Erro ao conectar para executar ação em lote.');
+    }
+}
+
+function setupBatchListeners() {
+    if (batchBtnPay) batchBtnPay.addEventListener('click', () => executeBatchAction('pay'));
+    if (batchBtnUnpay) batchBtnUnpay.addEventListener('click', () => executeBatchAction('unpay'));
+    if (batchBtnCheckin) batchBtnCheckin.addEventListener('click', () => executeBatchAction('checkin'));
+    if (batchBtnCheckout) batchBtnCheckout.addEventListener('click', () => executeBatchAction('checkout'));
+    if (batchBtnClear) batchBtnClear.addEventListener('click', clearPlayerSelection);
+
+    if (batchChipUnpaid) batchChipUnpaid.addEventListener('click', selectUnpaidPlayers);
+    if (batchChipUnarrived) batchChipUnarrived.addEventListener('click', selectUnarrivedPlayers);
+
+    [selectAllStats, selectAllPresence, selectAllPayment].forEach(cb => {
+        if (cb) {
+            cb.addEventListener('change', (e) => handleSelectAll(e.target.checked));
+        }
+    });
+}
+
+// Initialize Batch Action listeners
+document.addEventListener('DOMContentLoaded', setupBatchListeners);
+
+// ==========================================
 // Quadra ao Vivo & Manager Feature
 // ==========================================
 
 function setupMatchViewListeners() {
+    if (closeResultBannerBtn) {
+        closeResultBannerBtn.addEventListener('click', hideRotationFeedback);
+    }
+
     if (matchBackBtn) {
         matchBackBtn.addEventListener('click', () => {
             window.location.hash = '';
@@ -978,7 +1254,7 @@ async function fetchMatchData(publicHash, adminToken) {
     }
 }
 
-function renderMatchData(data) {
+function renderMatchData(data, isManualAction = false) {
     // Session Label
     matchSessionLabel.textContent = `Pelada #${data.session_id} • ${data.is_active ? 'Em Andamento' : 'Finalizada'}`;
 
@@ -992,6 +1268,17 @@ function renderMatchData(data) {
         adminBadge.classList.add('hidden');
         adminControlsPanel.classList.add('hidden');
         if (quickAddArrivalSection) quickAddArrivalSection.classList.add('hidden');
+    }
+
+    // Auto-detect rotation event for spectators polling live
+    if (!isManualAction && data.last_event_type === 'rotate' && data.last_event_time) {
+        if (lastSeenRotationEventTime && lastSeenRotationEventTime !== data.last_event_time) {
+            const allCourtPlayers = (data.teams.team_1.players || []).concat(data.teams.team_2.players || []);
+            showRotationFeedback(null, null, allCourtPlayers);
+        }
+        lastSeenRotationEventTime = data.last_event_time;
+    } else if (data.last_event_time) {
+        lastSeenRotationEventTime = data.last_event_time;
     }
 
     // Stopwatch logic
@@ -1068,10 +1355,18 @@ function renderTeamPlayers(container, players, isAdmin) {
         const card = document.createElement('div');
         card.className = 'player-card';
 
+        const isEntering = currentEnteringPlayerIds.has(p.id);
+        if (isEntering) {
+            card.classList.add('entering-highlight');
+        }
+
         const info = document.createElement('div');
         info.className = 'player-card-info';
         info.innerHTML = `
-            <span class="player-card-name">${p.name} ${p.is_paying ? '💳' : ''}</span>
+            <span class="player-card-name">
+                ${p.name} ${p.is_paying ? '💳' : ''}
+                ${isEntering ? '<span class="new-entrant-badge">🚀 Entrou</span>' : ''}
+            </span>
             <span class="player-card-stats">${p.matches_played} partida(s) • ${p.points} pts</span>
         `;
 
@@ -1233,7 +1528,13 @@ async function handleRotateMatch(winner) {
         }
 
         const data = await response.json();
-        renderMatchData(data);
+
+        // Trigger visual feedback notification for match result and entering team
+        const lastRes = data.last_result || {};
+        const entering = data.entering_players || [];
+        showRotationFeedback(lastRes.winner, lastRes.winner_label, entering);
+
+        renderMatchData(data, true);
     } catch (error) {
         console.error('Erro na rotação:', error);
         alert('Erro de conexão ao registrar resultado.');

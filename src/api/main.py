@@ -75,6 +75,10 @@ class AddPlayerRequest(BaseModel):
     is_confirmed: Optional[bool] = True
     do_checkin: Optional[bool] = False
 
+class BatchPlayerActionRequest(BaseModel):
+    player_ids: List[int]
+    action: str
+
 def format_iso_utc(dt):
     if not dt:
         return None
@@ -113,6 +117,7 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
     
     last_event_dt = last_log.created_at if last_log and last_log.created_at else session.created_at
     last_event_iso = format_iso_utc(last_event_dt)
+    last_event_type = last_log.event_type if last_log else None
     
     all_session_players = db.query(models.Player).filter(models.Player.session_id == session.id).all()
     
@@ -143,6 +148,7 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
         "created_at": format_iso_utc(session.created_at),
         "is_playing": len(playing) > 0,
         "last_event_time": last_event_iso,
+        "last_event_type": last_event_type,
         "teams": {
             "team_1": {
                 "slot": 1,
@@ -203,13 +209,32 @@ def rotate_match(public_hash: str, req: RotateRequest, token: Optional[str] = No
         raise HTTPException(status_code=403, detail="Acesso não autorizado: token de administrador inválido")
         
     active_players = get_all_active_players(db, session.id)
+    
+    # Capture captains before rotation for accurate winner labeling
+    playing_before = [p for p in active_players if p.is_playing]
+    c1, c2 = get_team_captains(playing_before)
+    
     entering = rotate_players(active_players, winner=req.winner)
     
     match_log = models.MatchLog(session_id=session.id, event_type="rotate", created_at=datetime.now(timezone.utc))
     db.add(match_log)
     db.commit()
     
-    return build_match_response(session, db, token)
+    res = build_match_response(session, db, token)
+    
+    if req.winner == 1:
+        w_label = f"Time {c1.name}" if c1 else "Time 1"
+    elif req.winner == 2:
+        w_label = f"Time {c2.name}" if c2 else "Time 2"
+    else:
+        w_label = "Empate"
+        
+    res["entering_players"] = [{"id": p.id, "name": p.name} for p in entering] if entering else []
+    res["last_result"] = {
+        "winner": req.winner,
+        "winner_label": w_label
+    }
+    return res
 
 @app.post("/sessions/hash/{public_hash}/descer")
 def player_step_down(public_hash: str, req: PlayerActionRequest, token: Optional[str] = None, db: Session = Depends(get_db)):
@@ -550,6 +575,110 @@ def draw_teams_by_hash(public_hash: str, token: Optional[str] = None, db: Sessio
     db.commit()
     
     return build_match_response(session, db, token)
+
+
+@app.post("/sessions/{session_id}/players/batch-action")
+def session_batch_player_action(session_id: int, req: BatchPlayerActionRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+
+    if not req.player_ids:
+        raise HTTPException(status_code=400, detail="Nenhum ID de jogador informado")
+
+    players = db.query(models.Player).filter(
+        models.Player.session_id == session_id,
+        models.Player.id.in_(req.player_ids)
+    ).all()
+
+    if not players:
+        raise HTTPException(status_code=404, detail="Nenhum jogador encontrado")
+
+    action = req.action.lower()
+    updated_count = 0
+    needs_next_player = False
+
+    for player in players:
+        if action == "pay":
+            set_paying_status(db, session_id, name=player.name, is_paying=True, telegram_id=player.telegram_id)
+            updated_count += 1
+        elif action == "unpay":
+            set_paying_status(db, session_id, name=player.name, is_paying=False, telegram_id=player.telegram_id)
+            updated_count += 1
+        elif action in ("checkin", "liberar"):
+            if action == "checkin" and not player.is_paying:
+                set_paying_status(db, session_id, name=player.name, is_paying=True, telegram_id=player.telegram_id)
+            register_arrival(db, session_id, name=player.name, telegram_id=player.telegram_id)
+            updated_count += 1
+        elif action == "checkout":
+            success, was_playing = leave_presence(db, session_id, name=player.name, telegram_id=player.telegram_id)
+            if was_playing:
+                needs_next_player = True
+            updated_count += 1
+        elif action in ("sair", "remove"):
+            success, was_playing = leave_presence(db, session_id, name=player.name, telegram_id=player.telegram_id)
+            if was_playing:
+                needs_next_player = True
+            db.delete(player)
+            updated_count += 1
+
+    if needs_next_player:
+        active_players = get_all_active_players(db, session_id)
+        pull_next_player(active_players)
+        db.commit()
+
+    return {"message": f"Ação '{action}' aplicada a {updated_count} jogador(es)", "updated_count": updated_count}
+
+
+@app.post("/sessions/hash/{public_hash}/batch-action")
+def match_batch_player_action_hash(public_hash: str, req: BatchPlayerActionRequest, token: Optional[str] = None, db: Session = Depends(get_db)):
+    session = get_session_by_hash(db, public_hash)
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    if not token or session.admin_token != token:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado: token de administrador inválido")
+
+    if not req.player_ids:
+        raise HTTPException(status_code=400, detail="Nenhum ID de jogador informado")
+
+    players = db.query(models.Player).filter(
+        models.Player.session_id == session.id,
+        models.Player.id.in_(req.player_ids)
+    ).all()
+
+    if not players:
+        raise HTTPException(status_code=404, detail="Nenhum jogador encontrado")
+
+    action = req.action.lower()
+    needs_next_player = False
+
+    for player in players:
+        if action == "pay":
+            set_paying_status(db, session.id, name=player.name, is_paying=True, telegram_id=player.telegram_id)
+        elif action == "unpay":
+            set_paying_status(db, session.id, name=player.name, is_paying=False, telegram_id=player.telegram_id)
+        elif action in ("checkin", "liberar"):
+            if action == "checkin" and not player.is_paying:
+                set_paying_status(db, session.id, name=player.name, is_paying=True, telegram_id=player.telegram_id)
+            register_arrival(db, session.id, name=player.name, telegram_id=player.telegram_id)
+        elif action == "checkout":
+            success, was_playing = leave_presence(db, session.id, name=player.name, telegram_id=player.telegram_id)
+            if was_playing:
+                needs_next_player = True
+        elif action in ("sair", "remove"):
+            success, was_playing = leave_presence(db, session.id, name=player.name, telegram_id=player.telegram_id)
+            if was_playing:
+                needs_next_player = True
+            db.delete(player)
+
+    if needs_next_player:
+        active_players = get_all_active_players(db, session.id)
+        pull_next_player(active_players)
+        db.commit()
+
+    return build_match_response(session, db, token)
+
 
 
 
