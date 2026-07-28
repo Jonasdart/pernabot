@@ -487,6 +487,17 @@ function renderPresenceTable(players) {
             checkinBtn.textContent = '📍 Chegou';
             checkinBtn.onclick = () => handleCheckinPlayer(player);
             actionTd.appendChild(checkinBtn);
+
+            if (!player.is_paying) {
+                const liberarBtn = document.createElement('button');
+                liberarBtn.className = 'btn-action-sm checkin';
+                liberarBtn.style.background = 'rgba(56, 189, 248, 0.2)';
+                liberarBtn.style.color = '#38bdf8';
+                liberarBtn.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+                liberarBtn.textContent = '🔓 Liberar';
+                liberarBtn.onclick = () => handleLiberarPlayer(player);
+                actionTd.appendChild(liberarBtn);
+            }
         }
 
         presenceList.appendChild(el);
@@ -562,6 +573,7 @@ function promptPaymentCheckin(player, onSuccess) {
     document.body.classList.add('modal-open');
 
     const confirmBtn = document.getElementById('btn-confirm-pay-and-checkin');
+    const liberarBtn = document.getElementById('btn-liberar-checkin');
     const cancelBtn = document.getElementById('btn-cancel-pay-checkin');
     const closeBtn = document.getElementById('close-confirm-modal-btn');
 
@@ -570,6 +582,7 @@ function promptPaymentCheckin(player, onSuccess) {
         const anyOpen = document.querySelectorAll('.modal-overlay:not(.hidden)');
         if (anyOpen.length === 0) document.body.classList.remove('modal-open');
         if (confirmBtn) confirmBtn.onclick = null;
+        if (liberarBtn) liberarBtn.onclick = null;
         if (cancelBtn) cancelBtn.onclick = null;
         if (closeBtn) closeBtn.onclick = null;
     };
@@ -584,6 +597,47 @@ function promptPaymentCheckin(player, onSuccess) {
             await handleCheckinPlayer(player, true);
             if (onSuccess) onSuccess();
         };
+    }
+
+    if (liberarBtn) {
+        liberarBtn.onclick = async () => {
+            cleanup();
+            await handleLiberarPlayer(player);
+            if (onSuccess) onSuccess();
+        };
+    }
+}
+
+async function handleLiberarPlayer(player) {
+    try {
+        if (currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/liberar`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: player.id })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                renderMatchData(data);
+                return;
+            }
+        }
+
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players/${player.id}/liberar?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players/${player.id}/liberar`;
+            const res = await fetch(url, { method: 'POST' });
+            if (res.ok) {
+                loadSessionDetails(activeSessionId, activeSessionDate);
+            } else {
+                const err = await res.json();
+                alert(`Erro: ${err.detail || 'Falha ao liberar jogador'}`);
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao liberar jogador:', e);
     }
 }
 
@@ -1113,6 +1167,17 @@ function renderPendingCheckinList(allPlayers, isAdmin) {
             checkinBtn.textContent = '📍 Chegou';
             checkinBtn.onclick = () => handleCheckinPlayer(p);
             card.querySelector('.card-action').appendChild(checkinBtn);
+
+            if (!p.is_paying) {
+                const liberarBtn = document.createElement('button');
+                liberarBtn.className = 'btn-action-sm checkin';
+                liberarBtn.style.background = 'rgba(56, 189, 248, 0.2)';
+                liberarBtn.style.color = '#38bdf8';
+                liberarBtn.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+                liberarBtn.textContent = '🔓 Liberar';
+                liberarBtn.onclick = () => handleLiberarPlayer(p);
+                card.querySelector('.card-action').appendChild(liberarBtn);
+            }
         }
 
         pendingContainer.appendChild(card);

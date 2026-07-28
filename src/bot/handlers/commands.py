@@ -4,14 +4,15 @@ from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 from src.database import SessionLocal
 from src.services.session_service import create_session, get_active_session
-from src.services.player_service import get_all_active_players, restart_session
+from src.services.player_service import get_all_active_players, restart_session, release_player
+import re
 from src.engine.match import draw_teams, rotate_players
 from src.engine.explainer import generate_queue_explanation, generate_teams_explanation
 from src.bot.keyboards import get_dynamic_keyboard
 from src.models.match_log import MatchLog
 
 def get_base_url() -> str:
-    return os.getenv("BASE_URL", "http://localhost:8000")
+    return os.getenv("BASE_URL", "http://localhost:8686")
 
 def format_session_links(session) -> str:
     base_url = get_base_url()
@@ -184,6 +185,49 @@ async def cmd_restart_session(update: Update, context: ContextTypes.DEFAULT_TYPE
     finally:
         db.close()
 
+async def cmd_release(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    msg = update.message or update.callback_query.message
+    user = update.effective_user
+    if update.callback_query:
+        await update.callback_query.answer()
+        
+    db = SessionLocal()
+    try:
+        session = get_active_session(db, chat_id)
+        if not session:
+            await msg.reply_text("Nenhuma pelada ativa.", reply_markup=get_dynamic_keyboard(db, chat_id))
+            return
+            
+        args_str = " ".join(context.args).strip() if context.args else ""
+        if args_str:
+            parts = re.split(r',|\s+e\s+', args_str)
+            target_names = [p.strip().lstrip('@') for p in parts if p.strip()]
+            target_telegram_id = None
+            target_username = None
+        else:
+            target_names = [user.first_name]
+            target_telegram_id = user.id
+            target_username = user.username
+
+        arrived_players = []
+        for name in target_names:
+            p, _ = release_player(db, session.id, name=name, telegram_id=target_telegram_id, telegram_username=target_username)
+            arrived_players.append(p)
+            
+        names_str = ", ".join([p.name for p in arrived_players])
+        orders_str = ", ".join([str(p.arrival_order) for p in arrived_players])
+        reply_text = f"🔓 Chegada liberada para {names_str}! (Ordem: {orders_str})"
+        
+        players = get_all_active_players(db, session.id)
+        is_rolling = any(p.is_playing for p in players)
+        if is_rolling:
+            reply_text += "\n\n" + generate_teams_explanation(players, title="🎲 *Situação Atual:*\n\n")
+            
+        await msg.reply_text(reply_text, parse_mode="Markdown", reply_markup=get_dynamic_keyboard(db, chat_id))
+    finally:
+        db.close()
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query.data
     if query == "cmd_nova_pelada":
@@ -208,6 +252,8 @@ handlers = [
     CommandHandler("fila", cmd_queue),
     CommandHandler("link", cmd_link),
     CommandHandler("links", cmd_link),
+    CommandHandler("liberar", cmd_release),
+    CommandHandler("libera", cmd_release),
     CallbackQueryHandler(handle_callback)
 ]
 

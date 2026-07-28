@@ -292,6 +292,21 @@ def player_checkin_hash(public_hash: str, req: PlayerActionRequest, token: Optio
     register_arrival(db, session.id, name=player.name, telegram_id=player.telegram_id)
     return build_match_response(session, db, token)
 
+@app.post("/sessions/hash/{public_hash}/liberar")
+def player_liberar_hash(public_hash: str, req: PlayerActionRequest, token: Optional[str] = None, db: Session = Depends(get_db)):
+    session = get_session_by_hash(db, public_hash)
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    if not token or session.admin_token != token:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado: token de administrador inválido")
+        
+    player = db.query(models.Player).filter(models.Player.session_id == session.id, models.Player.id == req.player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Jogador não encontrado")
+        
+    register_arrival(db, session.id, name=player.name, telegram_id=player.telegram_id)
+    return build_match_response(session, db, token)
+
 @app.post("/sessions/hash/{public_hash}/pagamento")
 def player_payment_hash(public_hash: str, req: PaymentActionRequest, token: Optional[str] = None, db: Session = Depends(get_db)):
     session = get_session_by_hash(db, public_hash)
@@ -387,6 +402,18 @@ def session_player_checkin(session_id: int, player_id: int, key: Optional[str] =
         raise HTTPException(status_code=400, detail="O jogador precisa estar com o pagamento confirmado para realizar o check-in.")
     register_arrival(db, session_id, name=player.name, telegram_id=player.telegram_id)
     return {"message": f"Check-in realizado com sucesso para {player.name}"}
+
+@app.post("/sessions/{session_id}/players/{player_id}/liberar")
+def session_player_liberar(session_id: int, player_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Jogador não encontrado")
+    register_arrival(db, session_id, name=player.name, telegram_id=player.telegram_id)
+    return {"message": f"Jogador {player.name} liberado com sucesso"}
 
 @app.post("/sessions/{session_id}/players/{player_id}/checkout")
 def session_player_checkout(session_id: int, player_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):

@@ -86,6 +86,9 @@ def register_arrival(db: DbSession, session_id: int, name: str = None, telegram_
         db.refresh(player)
     return player, is_new
 
+def release_player(db: DbSession, session_id: int, name: str = None, telegram_id: int = None, telegram_username: str = None):
+    return register_arrival(db, session_id, name=name, telegram_id=telegram_id, telegram_username=telegram_username)
+
 def get_all_active_players(db: DbSession, session_id: int):
     return db.query(Player).filter(Player.session_id == session_id, Player.has_arrived == True).all()
 

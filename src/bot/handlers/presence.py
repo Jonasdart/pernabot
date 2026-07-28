@@ -23,10 +23,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
     
-    # We will use regex to check intents
     is_confirm = re.match(r'^(eu vou|vou|\+|👍)$', text)
     is_cancel = re.match(r'^(não vou|\-)$', text)
     is_arrival = re.match(r'^(eu cheguei|cheguei|t[oó] aqui)$', text)
+    is_release = re.match(r'^(liberar?|libera|liberado|liberados)$', text)
     is_all_arrived = re.match(r'^(todos|todo mundo)\s+(chegou|chegaram)$', text)
     is_leave = re.match(r'^(sai|eu sai|fui|fui embora)$', text)
     is_step_down = re.match(r'^(desci|vou descer)$', text)
@@ -44,9 +44,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mention_not_pay_1 = re.match(r'^@?(.+?)\s+n[aã]o\s+pagou$', text)
     mention_pay_1 = re.match(r'^@?(.+?)\s+(pagou|pagaro|pagaram|pagarao)$', text) if not mention_not_pay_1 else None
+
+    mention_release_1 = re.match(r'^@?(.+?)\s+(libera|liberar|liberado|liberados)$', text)
+    mention_release_2 = re.match(r'^(libera|liberar)\s+@?(.+)$', text)
     
     # Only proceed if we match something
-    if not any([is_confirm, is_cancel, is_arrival, is_all_arrived, mention_confirm_1, mention_confirm_2, mention_cancel_1, mention_arrival_1, is_leave, mention_leave_1, is_step_down, mention_step_down_1, is_pay, is_not_pay, mention_pay_1, mention_not_pay_1]):
+    if not any([is_confirm, is_cancel, is_arrival, is_release, is_all_arrived, mention_confirm_1, mention_confirm_2, mention_cancel_1, mention_arrival_1, mention_release_1, mention_release_2, is_leave, mention_leave_1, is_step_down, mention_step_down_1, is_pay, is_not_pay, mention_pay_1, mention_not_pay_1]):
         return
 
     db = SessionLocal()
@@ -87,6 +90,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             is_mention = True
         elif mention_not_pay_1:
             target_names = parse_names(mention_not_pay_1.group(1))
+            is_mention = True
+        elif mention_release_1:
+            target_names = parse_names(mention_release_1.group(1))
+            is_mention = True
+        elif mention_release_2:
+            target_names = parse_names(mention_release_2.group(2))
             is_mention = True
             
         if is_mention:
@@ -199,6 +208,24 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_text += "\n\n" + generate_teams_explanation(players, title="🎲 *Situação Atual:*\n\n")
                     
                 await update.message.reply_text(reply_text, reply_markup=keyboard, parse_mode="Markdown")
+
+        elif is_release or mention_release_1 or mention_release_2:
+            arrived_players = []
+            for name in target_names:
+                player, _ = register_arrival(db, session.id, name=name, telegram_id=target_telegram_id, telegram_username=target_username)
+                arrived_players.append(player)
+                
+            names_str = ", ".join([p.name for p in arrived_players])
+            orders_str = ", ".join([str(p.arrival_order) for p in arrived_players])
+            reply_text = f"🔓 Chegada liberada para {names_str}! (Ordem: {orders_str})"
+            
+            players = get_all_active_players(db, session.id)
+            is_rolling = any(p.is_playing for p in players)
+            
+            if is_rolling:
+                reply_text += "\n\n" + generate_teams_explanation(players, title="🎲 *Situação Atual:*\n\n")
+                
+            await update.message.reply_text(reply_text, reply_markup=keyboard, parse_mode="Markdown")
 
         elif is_leave or mention_leave_1:
             left_names = []

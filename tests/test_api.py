@@ -138,6 +138,43 @@ def test_checkin_checkout_payment_endpoints(client_and_db):
     p_data_after = next(p for p in players_after if p["id"] == p_id)
     assert p_data_after["has_arrived"] is False
 
+def test_liberar_endpoint(client_and_db):
+    client, session_id = client_and_db
+    
+    # Add player without payment
+    add_resp = client.post(f"/sessions/{session_id}/players", json={"name": "SemPagamento", "is_paying": False, "is_confirmed": True})
+    assert add_resp.status_code == 200
+    p_id = add_resp.json()["player_id"]
+    
+    # Checkin fails for unpaid player
+    chk_resp = client.post(f"/sessions/{session_id}/players/{p_id}/checkin")
+    assert chk_resp.status_code == 400
+    
+    # Liberar succeeds even without payment
+    lib_resp = client.post(f"/sessions/{session_id}/players/{p_id}/liberar")
+    assert lib_resp.status_code == 200
+    
+    players = client.get(f"/sessions/{session_id}/players").json()
+    p_data = next(p for p in players if p["id"] == p_id)
+    assert p_data["has_arrived"] is True
+    assert p_data["is_paying"] is False
+
+    # Test release via public hash
+    sessions_resp = client.get("/sessions")
+    s_data = sessions_resp.json()[0]
+    public_hash = s_data["public_hash"]
+    admin_token = s_data["admin_token"]
+
+    add_resp_2 = client.post(f"/sessions/{session_id}/players", json={"name": "SemPagamento2", "is_paying": False, "is_confirmed": True})
+    p_id_2 = add_resp_2.json()["player_id"]
+
+    hash_lib_resp = client.post(f"/sessions/hash/{public_hash}/liberar?token={admin_token}", json={"player_id": p_id_2})
+    assert hash_lib_resp.status_code == 200
+    match_data = hash_lib_resp.json()
+    p_data_2 = next(p for p in match_data["all_players"] if p["id"] == p_id_2)
+    assert p_data_2["has_arrived"] is True
+    assert p_data_2["is_paying"] is False
+
 def test_recomecar_endpoints(client_and_db, monkeypatch):
     client, session_id = client_and_db
     monkeypatch.setenv("ADMIN_KEY", "minha_senha")
