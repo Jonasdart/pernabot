@@ -456,7 +456,6 @@ function renderStatsTable(players) {
             <td class="checkbox-cell" data-label="Selecionar"><input type="checkbox" class="row-checkbox" data-player-id="${player.id}" ${isSelected ? 'checked' : ''}></td>
             <td data-label="">#${player.rank}</td>
             <td data-label="Nome"><strong>${player.name}</strong></td>
-            <td data-label="Partidas">${player.matches_played}</td>
             <td data-label="Frag">
                 <span class="frag-badge">
                     <span class="frag-item win" title="Vitórias">${wins}V</span>
@@ -1367,7 +1366,7 @@ function renderTeamPlayers(container, players, isAdmin) {
                 ${p.name} ${p.is_paying ? '💳' : ''}
                 ${isEntering ? '<span class="new-entrant-badge">🚀 Entrou</span>' : ''}
             </span>
-            <span class="player-card-stats">${p.matches_played} partida(s) • ${p.points} pts</span>
+            <span class="player-card-stats">${p.points} pts</span>
         `;
 
         card.appendChild(info);

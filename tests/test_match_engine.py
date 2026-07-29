@@ -144,3 +144,95 @@ def test_late_arrival_ahead_of_waiting_players_with_matches_played():
     # Late player with 0 matches played should be first in queue
     assert sorted_waiting[0].id == 5
 
+def test_draw_does_not_inflate_matches_played():
+    """
+    Ensure that when a draw occurs with 8+ waiting players, matches_played
+    remains strictly equal to wins + draws + losses for each player.
+    """
+    players = create_mock_players(16)
+    draw_teams(players)
+    
+    playing = [p for p in players if p.is_playing]
+    p1 = playing[0]
+    p2 = playing[1]
+    p1.matches_played = 2
+    p1.wins = 2
+    p2.matches_played = 0
+    p2.wins = 0
+    
+    # Rotate with draw (winner=0), with 8 players waiting
+    rotate_players(players, winner=0)
+    
+    # p1 should now have 2 wins + 1 draw = 3 matches played (NOT equalized to max)
+    assert p1.draws == 1
+    assert p1.wins == 2
+    assert p1.wins + p1.draws + p1.losses == 3
+    
+    # p2 should have 0 wins + 1 draw = 1 match played
+    assert p2.draws == 1
+    assert p2.wins == 0
+    assert p2.wins + p2.draws + p2.losses == 1
+
+def test_draw_with_four_teams_rotation_and_quartet_integrity():
+    """
+    Test scenario: 4 teams total (16 players).
+    Team 1 and Team 2 draw.
+    Team 3 and Team 4 (8 waiting players) enter the court.
+    Team 1 and Team 2 leave and must remain as unmixed intact quartets in the queue.
+    """
+    players = create_mock_players(16)
+    
+    # Set up 4 distinct teams of 4 players each
+    # Team 1 (court slot 1)
+    team1_ids = {1, 2, 3, 4}
+    for p in players[0:4]:
+        p.is_playing = True
+        p.team_slot = 1
+        p.cycles_in_court = 1
+        p.initial_draw_order = p.id
+        
+    # Team 2 (court slot 2)
+    team2_ids = {5, 6, 7, 8}
+    for p in players[4:8]:
+        p.is_playing = True
+        p.team_slot = 2
+        p.cycles_in_court = 1
+        p.initial_draw_order = p.id
+        
+    # Team 3 (queue, waiting)
+    team3_ids = {9, 10, 11, 12}
+    for p in players[8:12]:
+        p.is_playing = False
+        p.cycles_waiting = 2
+        p.initial_draw_order = p.id
+        
+    # Team 4 (queue, waiting)
+    team4_ids = {13, 14, 15, 16}
+    for p in players[12:16]:
+        p.is_playing = False
+        p.cycles_waiting = 2
+        p.initial_draw_order = p.id
+
+    # Execute draw rotation
+    entering = rotate_players(players, winner=0)
+    
+    # 1. Verify 8 players entered the court (Team 3 and Team 4)
+    entering_ids = {p.id for p in entering}
+    assert len(entering_ids) == 8
+    assert entering_ids == team3_ids.union(team4_ids)
+    
+    # 2. Verify that Team 1 and Team 2 are now in queue
+    waiting_after = [p for p in players if not p.is_playing]
+    sorted_waiting_after = sort_entering_players(waiting_after)
+    
+    waiting_ids = [p.id for p in sorted_waiting_after]
+    first_quartet_in_queue = set(waiting_ids[:4])
+    second_quartet_in_queue = set(waiting_ids[4:8])
+    
+    # Either (first=Team1 and second=Team2) or (first=Team2 and second=Team1)
+    # Crucially, neither quartet should mix players from Team 1 and Team 2!
+    assert (first_quartet_in_queue == team1_ids and second_quartet_in_queue == team2_ids) or \
+           (first_quartet_in_queue == team2_ids and second_quartet_in_queue == team1_ids)
+
+
+

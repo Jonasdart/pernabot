@@ -100,8 +100,8 @@ def rotate_players(active_players: List[Player], winner: int = 0):
             leaving_pool = time_1 + time_2
             target_leaving = len(playing)
             
-            avg1 = sum(p.draw_weight for p in time_1) / len(time_1) if time_1 else 0
-            avg2 = sum(p.draw_weight for p in time_2) / len(time_2) if time_2 else 0
+            avg1 = sum(p.draw_weight or 0.0 for p in time_1) / len(time_1) if time_1 else 0
+            avg2 = sum(p.draw_weight or 0.0 for p in time_2) / len(time_2) if time_2 else 0
             
             max_initial = max([p.initial_draw_order for p in waiting] + [0])
             
@@ -112,12 +112,6 @@ def rotate_players(active_players: List[Player], winner: int = 0):
             else:
                 for p in time_2: p.initial_draw_order = max_initial + 1
                 for p in time_1: p.initial_draw_order = max_initial + 2
-                
-            max_matches_t1 = max([p.matches_played for p in time_1] + [0])
-            for p in time_1: p.matches_played = max_matches_t1
-            
-            max_matches_t2 = max([p.matches_played for p in time_2] + [0])
-            for p in time_2: p.matches_played = max_matches_t2
         else:
             leaving_pool = sort_leaving_players(playing)
             target_leaving = len(playing)

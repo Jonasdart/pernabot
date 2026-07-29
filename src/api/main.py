@@ -122,6 +122,10 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
     all_session_players = db.query(models.Player).filter(models.Player.session_id == session.id).all()
     
     def serialize_player(p):
+        w = p.wins or 0
+        d = p.draws or 0
+        l = p.losses or 0
+        matches = w + d + l if (w or d or l) else p.matches_played
         return {
             "id": p.id,
             "name": p.name,
@@ -130,11 +134,11 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
             "team_slot": p.team_slot,
             "cycles_in_court": p.cycles_in_court,
             "cycles_waiting": p.cycles_waiting,
-            "matches_played": p.matches_played,
-            "wins": p.wins or 0,
-            "draws": p.draws or 0,
-            "losses": p.losses or 0,
-            "points": (p.wins or 0) * 3 + (p.draws or 0) * 1,
+            "matches_played": matches,
+            "wins": w,
+            "draws": d,
+            "losses": l,
+            "points": w * 3 + d * 1,
             "is_confirmed": p.is_confirmed,
             "has_arrived": p.has_arrived,
             "is_paying": p.is_paying
@@ -388,10 +392,11 @@ def list_players(session_id: int, key: Optional[str] = None, db: Session = Depen
         
     result = []
     for p in players:
-        estimated_time = (p.matches_played * avg_duration_seconds) / 60  # in minutes
         wins = p.wins or 0
         draws = p.draws or 0
         losses = p.losses or 0
+        matches = wins + draws + losses if (wins or draws or losses) else p.matches_played
+        estimated_time = (matches * avg_duration_seconds) / 60  # in minutes
         points = (wins * 3) + (draws * 1)
         
         result.append({
@@ -401,7 +406,7 @@ def list_players(session_id: int, key: Optional[str] = None, db: Session = Depen
             "is_confirmed": p.is_confirmed,
             "has_arrived": p.has_arrived,
             "is_paying": p.is_paying,
-            "matches_played": p.matches_played,
+            "matches_played": matches,
             "wins": wins,
             "draws": draws,
             "losses": losses,
