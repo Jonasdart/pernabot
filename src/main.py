@@ -19,6 +19,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+import time
+
 def main():
     # Load env vars
     load_dotenv()
@@ -30,18 +32,28 @@ def main():
     # Create tables
     Base.metadata.create_all(bind=engine)
     
-    # Initialize Application
-    application = ApplicationBuilder().token(token).build()
-    
-    # Add handlers
-    for handler in command_handlers:
-        application.add_handler(handler)
-        
-    application.add_handler(presence_handler)
-    
-    # Run the bot
+    # Run the bot with retry resilience
     logging.info("Bot is starting...")
-    application.run_polling()
+    max_retries = 10
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Initialize Application
+            application = ApplicationBuilder().token(token).build()
+            
+            # Add handlers
+            for handler in command_handlers:
+                application.add_handler(handler)
+                
+            application.add_handler(presence_handler)
+            application.run_polling()
+            break
+        except Exception as e:
+            logging.error(f"Erro ao conectar com a API do Telegram (tentativa {attempt}/{max_retries}): {e}")
+            if attempt < max_retries:
+                time.sleep(3)
+            else:
+                raise e
 
 if __name__ == '__main__':
     main()
+

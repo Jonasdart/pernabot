@@ -4,7 +4,8 @@ const API_BASE = window.location.origin;
 const views = {
     sessions: document.getElementById('sessions-view'),
     players: document.getElementById('players-view'),
-    match: document.getElementById('match-view')
+    match: document.getElementById('match-view'),
+    checkin: document.getElementById('checkin-view')
 };
 
 const sessionsList = document.getElementById('sessions-list');
@@ -22,6 +23,39 @@ const totalConfirmedEl = document.getElementById('total-confirmed');
 const totalArrivedEl = document.getElementById('total-arrived');
 const totalPayingEl = document.getElementById('total-paying');
 
+// Search & Chip Filter Elements
+const playerSearchInput = document.getElementById('player-search-input');
+const clearSearchBtn = document.getElementById('clear-search-btn');
+const copyPaidListBtn = document.getElementById('copy-paid-list-btn');
+const copyPresenceListBtn = document.getElementById('copy-presence-list-btn');
+const btnQrCheckin = document.getElementById('btn-qr-checkin');
+
+// QR Code Modal Elements
+const qrCodeModal = document.getElementById('qr-code-modal');
+const closeQrModalBtn = document.getElementById('close-qr-modal-btn');
+const btnCopyQrUrl = document.getElementById('btn-copy-qr-url');
+const btnPrintQr = document.getElementById('btn-print-qr');
+const qrCodeUrlText = document.getElementById('qr-code-url-text');
+const qrCanvas = document.getElementById('qr-canvas');
+
+// Check-in View Elements
+const checkinPeladaTitle = document.getElementById('checkin-pelada-title');
+const checkinPeladaSubtitle = document.getElementById('checkin-pelada-subtitle');
+const checkinSessionStatusBadge = document.getElementById('checkin-session-status-badge');
+const checkinFormContainer = document.getElementById('checkin-form-container');
+const checkinNameInput = document.getElementById('checkin-name-input');
+const checkinSuggestions = document.getElementById('checkin-suggestions');
+const checkinQuickNames = document.getElementById('checkin-quick-names');
+const btnSubmitCheckin = document.getElementById('btn-submit-checkin');
+const checkinSuccessContainer = document.getElementById('checkin-success-container');
+const checkinSuccessPlayerName = document.getElementById('checkin-success-player-name');
+const checkinSuccessMsg = document.getElementById('checkin-success-msg');
+const checkinOrderBadge = document.getElementById('checkin-order-badge');
+const checkinQueueBadge = document.getElementById('checkin-queue-badge');
+const checkinPayBadge = document.getElementById('checkin-pay-badge');
+const btnGotoMatch = document.getElementById('btn-goto-match');
+const btnCheckinAnother = document.getElementById('btn-checkin-another');
+
 // Quadra ao Vivo Elements
 const matchBackBtn = document.getElementById('match-back-btn');
 const matchRefreshBtn = document.getElementById('match-refresh-btn');
@@ -36,6 +70,8 @@ const team1Title = document.getElementById('team1-title');
 const team2Title = document.getElementById('team2-title');
 const team1PlayersEl = document.getElementById('team1-players');
 const team2PlayersEl = document.getElementById('team2-players');
+const team1GkEl = document.getElementById('team1-gk');
+const team2GkEl = document.getElementById('team2-gk');
 const nextTeamListEl = document.getElementById('next-team-list');
 const matchQueueListEl = document.getElementById('match-queue-list');
 const nextTeamCountBadge = document.getElementById('next-team-count-badge');
@@ -54,8 +90,13 @@ const batchActionBar = document.getElementById('batch-action-bar');
 const batchSelectedCount = document.getElementById('batch-selected-count');
 const batchBtnPay = document.getElementById('batch-btn-pay');
 const batchBtnUnpay = document.getElementById('batch-btn-unpay');
+const batchBtnSpecial = document.getElementById('batch-btn-special');
+const batchBtnUnspecial = document.getElementById('batch-btn-unspecial');
+const batchBtnGoalkeeper = document.getElementById('batch-btn-goalkeeper');
+const batchBtnUnGoalkeeper = document.getElementById('batch-btn-ungoalkeeper');
 const batchBtnCheckin = document.getElementById('batch-btn-checkin');
 const batchBtnCheckout = document.getElementById('batch-btn-checkout');
+const batchBtnRemove = document.getElementById('batch-btn-remove');
 const batchBtnClear = document.getElementById('batch-btn-clear');
 const batchChipUnpaid = document.getElementById('batch-chip-unpaid');
 const batchChipUnarrived = document.getElementById('batch-chip-unarrived');
@@ -65,11 +106,47 @@ const selectAllPayment = document.getElementById('select-all-payment');
 
 const selectedPlayerIds = new Set();
 
+// Balance Configuration State
+let currentBalanceConfig = {
+    enabled: true,
+    key: 'jovem',
+    label: 'Jovens',
+    emoji: '🧒',
+    max_per_team: 1
+};
+
+function updateBalanceConfig(config) {
+    if (config && typeof config === 'object') {
+        currentBalanceConfig = { ...currentBalanceConfig, ...config };
+        const singular = currentBalanceConfig.label.endsWith('s') ? currentBalanceConfig.label.slice(0, -1) : currentBalanceConfig.label;
+        const specialLabelText = document.getElementById('add-is-special-text');
+        if (specialLabelText) {
+            specialLabelText.textContent = `${currentBalanceConfig.emoji} Marcar como ${singular}`;
+        }
+        const quickSpecialLabel = document.getElementById('quick-is-special-label');
+        if (quickSpecialLabel) {
+            quickSpecialLabel.textContent = `${currentBalanceConfig.emoji} ${singular}`;
+        }
+        const batchBtnSpecialEl = document.getElementById('batch-btn-special');
+        if (batchBtnSpecialEl) {
+            batchBtnSpecialEl.textContent = `${currentBalanceConfig.emoji} Marcar ${singular}`;
+        }
+    }
+}
+
 // State
 let currentSessions = [];
 let currentPlayers = [];
 let activeSessionId = null;
 let activeSessionDate = null;
+let activeSessionCheckinCode = null;
+let searchQuery = '';
+let paymentFilter = 'all';
+
+// Check-in State
+let checkinCurrentCode = null;
+let checkinSessionData = null;
+let checkinSelectedPlayer = null;
 
 // Quadra ao Vivo State
 let currentPublicHash = null;
@@ -101,10 +178,23 @@ function closeModal(el) {
     if (anyOpen.length === 0) document.body.classList.remove('modal-open');
 }
 
+function showToast(message, duration = 3000) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.remove('hidden');
+    setTimeout(() => {
+        toast.classList.add('hidden');
+    }, duration);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setupTabs();
     setupSorting();
     setupMatchViewListeners();
+    setupSearchAndFilters();
+    setupCheckinListeners();
+    setupImportWhatsappListeners();
 
     backBtn.addEventListener('click', () => {
         window.location.hash = '';
@@ -121,6 +211,37 @@ document.addEventListener('DOMContentLoaded', () => {
         resetPeladaBtn.addEventListener('click', () => handleRestartPelada(false));
     }
 
+    if (btnQrCheckin) {
+        btnQrCheckin.addEventListener('click', handleOpenQrModal);
+    }
+
+    if (closeQrModalBtn) {
+        closeQrModalBtn.addEventListener('click', () => closeModal(qrCodeModal));
+    }
+
+    if (btnCopyQrUrl) {
+        btnCopyQrUrl.addEventListener('click', () => {
+            const url = qrCodeUrlText ? qrCodeUrlText.textContent : '';
+            if (url) {
+                navigator.clipboard.writeText(url);
+                showToast('📋 Link de check-in copiado!');
+            }
+        });
+    }
+
+    if (btnPrintQr) {
+        btnPrintQr.addEventListener('click', () => {
+            window.print();
+        });
+    }
+
+    if (copyPaidListBtn) {
+        copyPaidListBtn.addEventListener('click', handleCopyPaidList);
+    }
+
+    if (copyPresenceListBtn) {
+        copyPresenceListBtn.addEventListener('click', handleCopyPresenceList);
+    }
 
     if (refreshBtn) {
         refreshBtn.addEventListener('click', async () => {
@@ -148,6 +269,15 @@ document.addEventListener('DOMContentLoaded', () => {
 function handleRoute() {
     stopPolling();
     const hash = window.location.hash;
+
+    const checkinRouteRegex = /^#\/checkin\/([a-zA-Z0-9_\-]+)/i;
+    const checkinMatch = hash.match(checkinRouteRegex);
+
+    if (checkinMatch) {
+        const checkinCode = checkinMatch[1];
+        loadCheckinView(checkinCode);
+        return;
+    }
 
     const matchRouteRegex = /^#\/match\/([a-f0-9\-]+)/i;
     const match = hash.match(matchRouteRegex);
@@ -337,6 +467,13 @@ function renderSessions() {
 async function loadSessionDetails(sessionId, date) {
     activeSessionId = sessionId;
     activeSessionDate = date;
+    
+    // Find checkin code from currentSessions if available
+    const sess = currentSessions.find(s => s.id === sessionId);
+    if (sess) {
+        activeSessionCheckinCode = sess.checkin_code || sess.public_hash;
+    }
+    
     showView('players');
 
     const loadingHtml = `<tr><td colspan="6" style="text-align:center;"><div class="loader"></div></td></tr>`;
@@ -372,9 +509,15 @@ function renderAllTables(players) {
     totalArrivedEl.textContent = arrivedCount;
     totalPayingEl.textContent = `${payingCount} / ${confirmedCount || players.length}`;
 
-    renderStatsTable(players);
-    renderPresenceTable(players);
-    renderPaymentTable(players);
+    // Apply search filter if present
+    let filteredPlayers = players;
+    if (searchQuery) {
+        filteredPlayers = players.filter(p => (p.name || '').toLowerCase().includes(searchQuery));
+    }
+
+    renderStatsTable(filteredPlayers);
+    renderPresenceTable(filteredPlayers);
+    renderPaymentTable(players); // Note: renderPaymentTable does its own searchQuery & chip filter internally
 }
 
 // Tab 1: Game Stats Table
@@ -383,7 +526,7 @@ function renderStatsTable(players) {
     const activePlayers = players.filter(p => p.has_arrived || p.matches_played > 0);
 
     if (activePlayers.length === 0) {
-        playersList.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Nenhum jogador em quadra ainda.</td></tr>`;
+        playersList.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">${searchQuery ? 'Nenhum jogador encontrado para a busca.' : 'Nenhum jogador em quadra ainda.'}</td></tr>`;
         return;
     }
 
@@ -452,10 +595,17 @@ function renderStatsTable(players) {
         const isSelected = selectedPlayerIds.has(player.id);
         if (isSelected) el.classList.add('selected-row');
 
+        const catPill = player.is_special_category 
+            ? `<span class="player-category-pill" title="Categoria: ${currentBalanceConfig.label}">${currentBalanceConfig.emoji}</span>`
+            : '';
+
         el.innerHTML = `
             <td class="checkbox-cell" data-label="Selecionar"><input type="checkbox" class="row-checkbox" data-player-id="${player.id}" ${isSelected ? 'checked' : ''}></td>
             <td data-label="">#${player.rank}</td>
-            <td data-label="Nome"><strong>${player.name}</strong></td>
+            <td data-label="Nome" class="player-name-cell">
+                <span class="player-name-text" title="Clique para renomear"><strong>${player.name}</strong>${catPill}</span>
+                <button class="btn-icon-rename" title="Renomear jogador">✏️</button>
+            </td>
             <td data-label="Frag">
                 <span class="frag-badge">
                     <span class="frag-item win" title="Vitórias">${wins}V</span>
@@ -466,6 +616,11 @@ function renderStatsTable(players) {
             <td data-label="PTS"><span class="pts-badge">${player.points} pts</span></td>
             <td data-label="Tempo"><span class="time-badge">⏱️ ${timeText}</span></td>
         `;
+
+        const renameBtn = el.querySelector('.btn-icon-rename');
+        const nameText = el.querySelector('.player-name-text');
+        if (renameBtn) renameBtn.addEventListener('click', (e) => { e.stopPropagation(); handleRenamePlayer(player); });
+        if (nameText) nameText.addEventListener('click', (e) => { e.stopPropagation(); handleRenamePlayer(player); });
 
         const cb = el.querySelector('.row-checkbox');
         if (cb) {
@@ -479,14 +634,20 @@ function renderStatsTable(players) {
 // Tab 2: Presence List Table
 function renderPresenceTable(players) {
     presenceList.innerHTML = '';
-    const presencePlayers = players.filter(p => p.is_confirmed || p.has_arrived);
+    
+    // Sort players: Arrived first, then Confirmed, then others
+    const sortedPlayers = [...players].sort((a, b) => {
+        if (a.has_arrived !== b.has_arrived) return a.has_arrived ? -1 : 1;
+        if (a.is_confirmed !== b.is_confirmed) return a.is_confirmed ? -1 : 1;
+        return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+    });
 
-    if (presencePlayers.length === 0) {
-        presenceList.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Nenhuma presença confirmada.</td></tr>`;
+    if (sortedPlayers.length === 0) {
+        presenceList.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">${searchQuery ? 'Nenhum jogador encontrado para a busca.' : 'Nenhum jogador cadastrado na pelada.'}</td></tr>`;
         return;
     }
 
-    presencePlayers.forEach((player, index) => {
+    sortedPlayers.forEach((player, index) => {
         const el = document.createElement('tr');
         const isSelected = selectedPlayerIds.has(player.id);
         if (isSelected) el.classList.add('selected-row');
@@ -494,25 +655,81 @@ function renderPresenceTable(players) {
         let statusBadge = '';
 
         if (player.has_arrived) {
-            statusBadge = `<span class="status-badge arrived">🏟️ Na Quadra</span>`;
+            statusBadge = `<span class="status-badge arrived clickable-badge" title="🏟️ Na Quadra (Clique para marcar como Ausente)">🏟️ Na Quadra</span>`;
         } else if (player.is_confirmed) {
-            statusBadge = `<span class="status-badge confirmed">🟢 Confirmado</span>`;
+            statusBadge = `<span class="status-badge confirmed clickable-badge" title="🟢 Confirmado (Clique para marcar como Ausente)">🟢 Confirmado</span>`;
         } else {
-            statusBadge = `<span class="status-badge pending">⏳ Ausente</span>`;
+            statusBadge = `<span class="status-badge pending clickable-badge" title="⏳ Ausente (Clique para marcar como Confirmado)">⏳ Ausente</span>`;
         }
 
         let payBadge = player.is_paying
-            ? `<span class="status-badge paid">💳 Pago</span>`
-            : `<span class="status-badge pending">❌ Pendente</span>`;
+            ? `<span class="status-badge paid clickable-badge" title="Clique para desmarcar pagamento">💳 Pago</span>`
+            : `<span class="status-badge pending clickable-badge" title="Clique para marcar como pago">❌ Pendente</span>`;
+
+        const singular = currentBalanceConfig.label.endsWith('s') ? currentBalanceConfig.label.slice(0, -1) : currentBalanceConfig.label;
+        let catBadge = player.is_special_category
+            ? `<span class="status-badge category clickable-badge" title="Clique para alternar para Normal">${currentBalanceConfig.emoji} ${singular}</span>`
+            : `<span class="status-badge category default clickable-badge" title="Clique para alternar para ${currentBalanceConfig.label}">👤 Normal</span>`;
+
+        let gkBadge = player.is_goalkeeper
+            ? `<span class="status-badge goalkeeper clickable-badge" title="Clique para alternar para Linha">🧤 Goleiro</span>`
+            : `<span class="status-badge goalkeeper default clickable-badge" title="Clique para definir como Goleiro">⚽ Linha</span>`;
 
         el.innerHTML = `
             <td class="checkbox-cell" data-label="Selecionar"><input type="checkbox" class="row-checkbox" data-player-id="${player.id}" ${isSelected ? 'checked' : ''}></td>
             <td data-label="">#${index + 1}</td>
-            <td data-label="Nome"><strong>${player.name}</strong></td>
+            <td data-label="Nome" class="player-name-cell">
+                <span class="player-name-text" title="Clique para renomear"><strong>${player.name}</strong></span>
+                <button class="btn-icon-rename" title="Renomear jogador">✏️</button>
+            </td>
+            <td data-label="Categoria">
+                <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+                    ${gkBadge}
+                    ${catBadge}
+                </div>
+            </td>
             <td data-label="Status">${statusBadge}</td>
             <td data-label="Pagamento">${payBadge}</td>
             <td class="action-cell"></td>
         `;
+
+        const renameBtn = el.querySelector('.btn-icon-rename');
+        const nameText = el.querySelector('.player-name-text');
+        if (renameBtn) renameBtn.addEventListener('click', (e) => { e.stopPropagation(); handleRenamePlayer(player); });
+        if (nameText) nameText.addEventListener('click', (e) => { e.stopPropagation(); handleRenamePlayer(player); });
+
+        const gkBadgeEl = el.querySelector('td[data-label="Categoria"] .status-badge.goalkeeper.clickable-badge');
+        if (gkBadgeEl) {
+            gkBadgeEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleSetGoalkeeper(player.id, !player.is_goalkeeper);
+            });
+        }
+
+        const catBadgeEl = el.querySelector('td[data-label="Categoria"] .status-badge.category.clickable-badge');
+        if (catBadgeEl) {
+            catBadgeEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleSetCategory(player.id, !player.is_special_category);
+            });
+        }
+
+        const presenceBadgeEl = el.querySelector('td[data-label="Status"] .status-badge.clickable-badge');
+        if (presenceBadgeEl) {
+            presenceBadgeEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const newStatus = !(player.is_confirmed || player.has_arrived);
+                handleSetPresence(player.id, newStatus);
+            });
+        }
+
+        const payBadgeEl = el.querySelector('td[data-label="Pagamento"] .status-badge.clickable-badge');
+        if (payBadgeEl) {
+            payBadgeEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleSetPayment(player.id, !player.is_paying);
+            });
+        }
 
         const cb = el.querySelector('.row-checkbox');
         if (cb) {
@@ -545,6 +762,13 @@ function renderPresenceTable(players) {
             }
         }
 
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-action-sm remove';
+        deleteBtn.title = 'Remover jogador desta pelada';
+        deleteBtn.textContent = '🗑️';
+        deleteBtn.onclick = () => handleDeletePlayer(player);
+        actionTd.appendChild(deleteBtn);
+
         presenceList.appendChild(el);
     });
 }
@@ -552,10 +776,11 @@ function renderPresenceTable(players) {
 // Tab 3: Payment List Table
 function renderPaymentTable(players) {
     paymentList.innerHTML = '';
-    const relevantPlayers = players.filter(p => p.is_confirmed || p.has_arrived || p.is_paying);
+    const relevantPlayers = players;
 
     const totalCount = relevantPlayers.length;
     const payingCount = relevantPlayers.filter(p => p.is_paying).length;
+    const pendingCount = totalCount - payingCount;
     const percent = totalCount > 0 ? Math.round((payingCount / totalCount) * 100) : 0;
 
     const countTextEl = document.getElementById('payment-count-text');
@@ -566,27 +791,63 @@ function renderPaymentTable(players) {
     if (percentTextEl) percentTextEl.textContent = `${percent}% Pago`;
     if (progressFillEl) progressFillEl.style.width = `${percent}%`;
 
-    if (relevantPlayers.length === 0) {
-        paymentList.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum jogador na lista.</td></tr>`;
+    // Update Chip Counter badges
+    const countChipAll = document.getElementById('count-chip-all');
+    const countChipPaid = document.getElementById('count-chip-paid');
+    const countChipPending = document.getElementById('count-chip-pending');
+    if (countChipAll) countChipAll.textContent = totalCount;
+    if (countChipPaid) countChipPaid.textContent = payingCount;
+    if (countChipPending) countChipPending.textContent = pendingCount;
+
+    // Apply Filter & Search
+    let displayList = relevantPlayers;
+    if (paymentFilter === 'paid') {
+        displayList = displayList.filter(p => p.is_paying);
+    } else if (paymentFilter === 'pending') {
+        displayList = displayList.filter(p => !p.is_paying);
+    }
+
+    if (searchQuery) {
+        displayList = displayList.filter(p => (p.name || '').toLowerCase().includes(searchQuery));
+    }
+
+    if (displayList.length === 0) {
+        paymentList.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">${searchQuery ? 'Nenhum jogador encontrado para a busca.' : 'Nenhum jogador nesta lista.'}</td></tr>`;
         return;
     }
 
-    relevantPlayers.forEach((player, index) => {
+    displayList.forEach((player, index) => {
         const el = document.createElement('tr');
         const isSelected = selectedPlayerIds.has(player.id);
         if (isSelected) el.classList.add('selected-row');
 
         let payBadge = player.is_paying
-            ? `<span class="status-badge paid">💳 Pago</span>`
-            : `<span class="status-badge pending">❌ Pendente</span>`;
+            ? `<span class="status-badge paid clickable-badge" title="Clique para desmarcar pagamento">💳 Pago</span>`
+            : `<span class="status-badge pending clickable-badge" title="Clique para marcar como pago">❌ Pendente</span>`;
 
         el.innerHTML = `
             <td class="checkbox-cell" data-label="Selecionar"><input type="checkbox" class="row-checkbox" data-player-id="${player.id}" ${isSelected ? 'checked' : ''}></td>
             <td data-label="">#${index + 1}</td>
-            <td data-label="Nome"><strong>${player.name}</strong></td>
+            <td data-label="Nome" class="player-name-cell">
+                <span class="player-name-text" title="Clique para renomear"><strong>${player.name}</strong></span>
+                <button class="btn-icon-rename" title="Renomear jogador">✏️</button>
+            </td>
             <td data-label="Pagamento">${payBadge}</td>
             <td class="action-cell"></td>
         `;
+
+        const renameBtn = el.querySelector('.btn-icon-rename');
+        const nameText = el.querySelector('.player-name-text');
+        if (renameBtn) renameBtn.addEventListener('click', (e) => { e.stopPropagation(); handleRenamePlayer(player); });
+        if (nameText) nameText.addEventListener('click', (e) => { e.stopPropagation(); handleRenamePlayer(player); });
+
+        const payBadgeEl = el.querySelector('td[data-label="Pagamento"] .status-badge.clickable-badge');
+        if (payBadgeEl) {
+            payBadgeEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleSetPayment(player.id, !player.is_paying);
+            });
+        }
 
         const cb = el.querySelector('.row-checkbox');
         if (cb) {
@@ -597,7 +858,7 @@ function renderPaymentTable(players) {
         const togglePayBtn = document.createElement('button');
         if (player.is_paying) {
             togglePayBtn.className = 'btn-action-sm unpay';
-            togglePayBtn.textContent = '↩️ Desfazer Pago';
+            togglePayBtn.textContent = '↩️ Desfazer';
             togglePayBtn.onclick = () => handleSetPayment(player.id, false);
         } else {
             togglePayBtn.className = 'btn-action-sm pay';
@@ -606,13 +867,58 @@ function renderPaymentTable(players) {
         }
         actionTd.appendChild(togglePayBtn);
 
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-action-sm remove';
+        deleteBtn.title = 'Remover jogador desta pelada';
+        deleteBtn.textContent = '🗑️';
+        deleteBtn.onclick = () => handleDeletePlayer(player);
+        actionTd.appendChild(deleteBtn);
+
         paymentList.appendChild(el);
     });
 }
 
+
 // ==========================================
-// Handlers for Check-in, Checkout & Payments
+// Handlers for Check-in, Checkout, Payments & Delete
 // ==========================================
+
+async function handleDeletePlayer(player) {
+    if (!player || !player.id) return;
+    if (!confirm(`Deseja realmente remover o jogador "${player.name}" desta pelada?`)) return;
+
+    try {
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players/${player.id}?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players/${player.id}`;
+            const res = await fetch(url, { method: 'DELETE' });
+            if (!res.ok) {
+                const err = await res.json();
+                alert(`Erro: ${err.detail || 'Falha ao remover jogador'}`);
+                return;
+            }
+            showToast(`🗑️ Jogador ${player.name} removido.`);
+            selectedPlayerIds.delete(player.id);
+            await loadSessionDetails(activeSessionId, activeSessionDate);
+        } else if (currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/batch-action`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_ids: [player.id], action: 'remove' })
+            });
+            if (res.ok) {
+                showToast(`🗑️ Jogador ${player.name} removido.`);
+                await fetchMatchData(currentPublicHash, currentAdminToken);
+            }
+        }
+    } catch (err) {
+        console.error('Erro ao remover jogador:', err);
+        alert('Erro de conexão ao remover jogador.');
+    }
+}
+
 
 function promptPaymentCheckin(player, onSuccess) {
     const modalPlayerName = document.getElementById('modal-player-name');
@@ -803,6 +1109,165 @@ async function handleSetPayment(playerId, isPaying) {
     }
 }
 
+async function handleSetCategory(playerId, isSpecial) {
+    try {
+        if (views.match && views.match.classList.contains('active') && currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/categoria`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: playerId, is_special: isSpecial })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                renderMatchData(data);
+                showToast(`Categoria atualizada para ${isSpecial ? currentBalanceConfig.label : 'Normal'}!`, 'success');
+                return;
+            }
+        }
+
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/categoria?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/categoria`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: playerId, is_special: isSpecial })
+            });
+            if (res.ok) {
+                loadSessionDetails(activeSessionId, activeSessionDate);
+                showToast(`Categoria atualizada para ${isSpecial ? currentBalanceConfig.label : 'Normal'}!`, 'success');
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao atualizar categoria:', e);
+        showToast('Erro ao atualizar categoria do jogador.', 'error');
+    }
+}
+
+async function handleSetGoalkeeper(playerId, isGoalkeeper) {
+    try {
+        if (views.match && views.match.classList.contains('active') && currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/goleiro`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: playerId, is_goalkeeper: isGoalkeeper })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                renderMatchData(data);
+                showToast(`Jogador definido como ${isGoalkeeper ? 'Goleiro 🧤' : 'Linha ⚽'}!`, 'success');
+                return;
+            }
+        }
+
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/goleiro?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/goleiro`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: playerId, is_goalkeeper: isGoalkeeper })
+            });
+            if (res.ok) {
+                loadSessionDetails(activeSessionId, activeSessionDate);
+                showToast(`Jogador definido como ${isGoalkeeper ? 'Goleiro 🧤' : 'Linha ⚽'}!`, 'success');
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao atualizar status de goleiro:', e);
+        showToast('Erro ao atualizar status de goleiro do jogador.', 'error');
+    }
+}
+
+async function handleSetPresence(playerId, isConfirmed) {
+    try {
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey 
+                ? `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/presenca?key=${encodeURIComponent(adminKey)}` 
+                : `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/presenca`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_confirmed: isConfirmed })
+            });
+            if (res.ok) {
+                showToast(isConfirmed ? '🟢 Presença confirmada!' : '⏳ Marcado como ausente.');
+                await loadSessionDetails(activeSessionId, activeSessionDate);
+            }
+        } else if (currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/players/${playerId}/presenca`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_confirmed: isConfirmed })
+            });
+            if (res.ok) {
+                showToast(isConfirmed ? '🟢 Presença confirmada!' : '⏳ Marcado como ausente.');
+                await fetchMatchData(currentPublicHash, currentAdminToken);
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao alternar presença:', e);
+        alert('Erro ao alternar presença do jogador.');
+    }
+}
+
+function handleRenamePlayer(player) {
+    const newName = prompt(`Digite o novo nome para "${player.name}":`, player.name);
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed) {
+        alert('O nome do jogador não pode ficar vazio.');
+        return;
+    }
+    if (trimmed === player.name) return;
+    executeRenamePlayer(player.id, trimmed);
+}
+
+async function executeRenamePlayer(playerId, newName) {
+    try {
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey 
+                ? `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/rename?key=${encodeURIComponent(adminKey)}` 
+                : `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/rename`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                alert(`Erro: ${err.detail || 'Falha ao renomear jogador'}`);
+                return;
+            }
+            showToast(`✏️ Jogador renomeado para "${newName}"`);
+            await loadSessionDetails(activeSessionId, activeSessionDate);
+        } else if (currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/players/${playerId}/rename`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName })
+            });
+            if (res.ok) {
+                showToast(`✏️ Jogador renomeado para "${newName}"`);
+                await fetchMatchData(currentPublicHash, currentAdminToken);
+            }
+        }
+    } catch (err) {
+        console.error('Erro ao renomear jogador:', err);
+        alert('Erro de conexão ao renomear jogador.');
+    }
+}
+
 // ==========================================
 // Rotation Feedback & Banner Animations
 // ==========================================
@@ -963,7 +1428,7 @@ async function executeBatchAction(action) {
 
     try {
         let response;
-        if (currentPublicHash && currentAdminToken) {
+        if (views.match && views.match.classList.contains('active') && currentPublicHash && currentAdminToken) {
             response = await fetch(`${API_BASE}/sessions/hash/${currentPublicHash}/batch-action?token=${encodeURIComponent(currentAdminToken)}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1003,8 +1468,23 @@ async function executeBatchAction(action) {
 function setupBatchListeners() {
     if (batchBtnPay) batchBtnPay.addEventListener('click', () => executeBatchAction('pay'));
     if (batchBtnUnpay) batchBtnUnpay.addEventListener('click', () => executeBatchAction('unpay'));
+    if (batchBtnSpecial) batchBtnSpecial.addEventListener('click', () => executeBatchAction('set_special'));
+    if (batchBtnUnspecial) batchBtnUnspecial.addEventListener('click', () => executeBatchAction('unset_special'));
+    if (batchBtnGoalkeeper) batchBtnGoalkeeper.addEventListener('click', () => executeBatchAction('set_goalkeeper'));
+    if (batchBtnUnGoalkeeper) batchBtnUnGoalkeeper.addEventListener('click', () => executeBatchAction('unset_goalkeeper'));
     if (batchBtnCheckin) batchBtnCheckin.addEventListener('click', () => executeBatchAction('checkin'));
     if (batchBtnCheckout) batchBtnCheckout.addEventListener('click', () => executeBatchAction('checkout'));
+    if (batchBtnRemove) {
+        batchBtnRemove.addEventListener('click', async () => {
+            const count = selectedPlayerIds.size;
+            if (count === 0) return;
+            const confirmMsg = count === 1 
+                ? `Deseja realmente remover o jogador selecionado desta pelada?`
+                : `Deseja realmente remover os ${count} jogadores selecionados desta pelada?`;
+            if (!confirm(confirmMsg)) return;
+            await executeBatchAction('remove');
+        });
+    }
     if (batchBtnClear) batchBtnClear.addEventListener('click', clearPlayerSelection);
 
     if (batchChipUnpaid) batchChipUnpaid.addEventListener('click', selectUnpaidPlayers);
@@ -1058,6 +1538,10 @@ function setupMatchViewListeners() {
         addPlayerBtn.addEventListener('click', () => {
             openModal(addPlayerModal);
             const nameInput = document.getElementById('player-name-input');
+            const specialInput = document.getElementById('add-is-special');
+            const gkInput = document.getElementById('add-is-goalkeeper');
+            if (specialInput) specialInput.checked = false;
+            if (gkInput) gkInput.checked = false;
             if (nameInput) {
                 nameInput.value = '';
                 nameInput.focus();
@@ -1084,12 +1568,16 @@ function setupMatchViewListeners() {
             e.preventDefault();
             const nameInput = document.getElementById('player-name-input');
             const isPayingInput = document.getElementById('add-is-paying');
+            const isSpecialInput = document.getElementById('add-is-special');
+            const isGkInput = document.getElementById('add-is-goalkeeper');
             const doCheckinInput = document.getElementById('add-do-checkin');
 
             const name = nameInput ? nameInput.value.trim() : '';
             if (!name) return;
 
             const is_paying = isPayingInput ? isPayingInput.checked : false;
+            const is_special = isSpecialInput ? isSpecialInput.checked : false;
+            const is_goalkeeper = isGkInput ? isGkInput.checked : false;
             const do_checkin = doCheckinInput ? doCheckinInput.checked : false;
 
             if (!activeSessionId) {
@@ -1106,8 +1594,9 @@ function setupMatchViewListeners() {
                     body: JSON.stringify({
                         name: name,
                         is_paying: is_paying,
-                        is_confirmed: true,
-                        do_checkin: do_checkin
+                        do_checkin: do_checkin,
+                        is_special: is_special,
+                        is_goalkeeper: is_goalkeeper
                     })
                 });
 
@@ -1130,11 +1619,15 @@ function setupMatchViewListeners() {
             e.preventDefault();
             const nameInput = document.getElementById('quick-player-name-input');
             const isPayingInput = document.getElementById('quick-is-paying');
+            const isSpecialInput = document.getElementById('quick-is-special');
+            const isGkInput = document.getElementById('quick-is-goalkeeper');
 
             const name = nameInput ? nameInput.value.trim() : '';
             if (!name) return;
 
             const is_paying = isPayingInput ? isPayingInput.checked : true;
+            const is_special = isSpecialInput ? isSpecialInput.checked : false;
+            const is_goalkeeper = isGkInput ? isGkInput.checked : false;
 
             try {
                 if (currentPublicHash) {
@@ -1147,12 +1640,16 @@ function setupMatchViewListeners() {
                             name: name,
                             is_paying: is_paying,
                             is_confirmed: true,
-                            do_checkin: true
+                            do_checkin: true,
+                            is_special: is_special,
+                            is_goalkeeper: is_goalkeeper
                         })
                     });
 
                     if (res.ok) {
                         if (nameInput) nameInput.value = '';
+                        if (isSpecialInput) isSpecialInput.checked = false;
+                        if (isGkInput) isGkInput.checked = false;
                         const data = await res.json();
                         renderMatchData(data);
                         return;
@@ -1169,12 +1666,16 @@ function setupMatchViewListeners() {
                             name: name,
                             is_paying: is_paying,
                             is_confirmed: true,
-                            do_checkin: true
+                            do_checkin: true,
+                            is_special: is_special,
+                            is_goalkeeper: is_goalkeeper
                         })
                     });
 
                     if (res.ok) {
                         if (nameInput) nameInput.value = '';
+                        if (isSpecialInput) isSpecialInput.checked = false;
+                        if (isGkInput) isGkInput.checked = false;
                         loadSessionDetails(activeSessionId, activeSessionDate);
                     } else {
                         const err = await res.json();
@@ -1254,6 +1755,9 @@ async function fetchMatchData(publicHash, adminToken) {
 }
 
 function renderMatchData(data, isManualAction = false) {
+    if (data.balance_config) {
+        updateBalanceConfig(data.balance_config);
+    }
     // Session Label
     matchSessionLabel.textContent = `Pelada #${data.session_id} • ${data.is_active ? 'Em Andamento' : 'Finalizada'}`;
 
@@ -1272,7 +1776,10 @@ function renderMatchData(data, isManualAction = false) {
     // Auto-detect rotation event for spectators polling live
     if (!isManualAction && data.last_event_type === 'rotate' && data.last_event_time) {
         if (lastSeenRotationEventTime && lastSeenRotationEventTime !== data.last_event_time) {
-            const allCourtPlayers = (data.teams.team_1.players || []).concat(data.teams.team_2.players || []);
+            const allCourtPlayers = (data.teams.team_1.players || [])
+                .concat(data.teams.team_2.players || [])
+                .concat(data.teams.team_1.goalkeeper ? [data.teams.team_1.goalkeeper] : [])
+                .concat(data.teams.team_2.goalkeeper ? [data.teams.team_2.goalkeeper] : []);
             showRotationFeedback(null, null, allCourtPlayers);
         }
         lastSeenRotationEventTime = data.last_event_time;
@@ -1300,12 +1807,19 @@ function renderMatchData(data, isManualAction = false) {
     btnWinT1.textContent = `🏆 ${t1.label} Venceu`;
     btnWinT2.textContent = `🏆 ${t2.label} Venceu`;
 
+    // Render Goalkeepers
+    renderGoalkeeper(team1GkEl, t1.goalkeeper, data.is_admin);
+    renderGoalkeeper(team2GkEl, t2.goalkeeper, data.is_admin);
+
     // Render Court Players
     renderTeamPlayers(team1PlayersEl, t1.players, data.is_admin);
     renderTeamPlayers(team2PlayersEl, t2.players, data.is_admin);
 
     // Render Next Team
     renderNextTeam(data.next_team, data.is_admin);
+
+    // Render Goalkeeper Queue & Next GK
+    renderGoalkeeperQueue(data.goalkeeper_queue, data.next_goalkeeper, data.is_admin);
 
     // Render Pending Check-in list (All confirmed players who haven't checked in yet)
     renderPendingCheckinList(data.all_players, data.is_admin);
@@ -1316,7 +1830,8 @@ function renderMatchData(data, isManualAction = false) {
     // Update FAB queue count
     const fabQueueCount = document.getElementById('fab-queue-count');
     if (fabQueueCount) {
-        fabQueueCount.textContent = data.queue ? data.queue.length : 0;
+        const totalWaiting = (data.queue ? data.queue.length : 0) + (data.goalkeeper_queue ? data.goalkeeper_queue.length : 0);
+        fabQueueCount.textContent = totalWaiting;
     }
 }
 
@@ -1359,11 +1874,13 @@ function renderTeamPlayers(container, players, isAdmin) {
             card.classList.add('entering-highlight');
         }
 
+        const catMarker = p.is_special_category ? ` <span title="${currentBalanceConfig.label}">${currentBalanceConfig.emoji}</span>` : '';
+
         const info = document.createElement('div');
         info.className = 'player-card-info';
         info.innerHTML = `
             <span class="player-card-name">
-                ${p.name} ${p.is_paying ? '💳' : ''}
+                ${p.name}${catMarker} ${p.is_paying ? '💳' : ''}
                 ${isEntering ? '<span class="new-entrant-badge">🚀 Entrou</span>' : ''}
             </span>
             <span class="player-card-stats">${p.points} pts</span>
@@ -1396,6 +1913,149 @@ function renderTeamPlayers(container, players, isAdmin) {
     });
 }
 
+function renderGoalkeeper(container, gk, isAdmin) {
+    if (!container) return;
+    container.innerHTML = '';
+    if (!gk) {
+        container.classList.add('hidden');
+        return;
+    }
+    container.classList.remove('hidden');
+
+    const card = document.createElement('div');
+    card.className = 'player-card goalkeeper-card';
+
+    const isEntering = currentEnteringPlayerIds.has(gk.id);
+    if (isEntering) {
+        card.classList.add('entering-highlight');
+    }
+
+    const catMarker = gk.is_special_category ? ` <span title="${currentBalanceConfig.label}">${currentBalanceConfig.emoji}</span>` : '';
+
+    const info = document.createElement('div');
+    info.className = 'player-card-info';
+    info.innerHTML = `
+        <span class="player-card-name">
+            <span class="gk-role-badge">🧤 GOL</span> ${gk.name}${catMarker} ${gk.is_paying ? '💳' : ''}
+            ${isEntering ? '<span class="new-entrant-badge">🚀 Entrou</span>' : ''}
+        </span>
+        <span class="player-card-stats">${gk.points} pts</span>
+    `;
+
+    card.appendChild(info);
+
+    if (isAdmin) {
+        const actions = document.createElement('div');
+        actions.className = 'player-card-actions';
+
+        const btnDescer = document.createElement('button');
+        btnDescer.className = 'btn-action-sm descer';
+        btnDescer.title = 'Descer para a reserva de goleiros';
+        btnDescer.textContent = '🪑 Descer';
+        btnDescer.addEventListener('click', () => handlePlayerAction('descer', gk.id));
+
+        const btnSair = document.createElement('button');
+        btnSair.className = 'btn-action-sm sair';
+        btnSair.title = 'Sair da pelada';
+        btnSair.textContent = '👋 Sair';
+        btnSair.addEventListener('click', () => handlePlayerAction('sair', gk.id));
+
+        actions.appendChild(btnDescer);
+        actions.appendChild(btnSair);
+        card.appendChild(actions);
+    }
+
+    container.appendChild(card);
+}
+
+function renderGoalkeeperQueue(gkQueue, nextGk, isAdmin) {
+    const gkSection = document.getElementById('gk-queue-section');
+    const gkCountBadge = document.getElementById('gk-queue-count-badge');
+    const nextGkContainer = document.getElementById('next-gk-container');
+    const gkQueueListEl = document.getElementById('match-gk-queue-list');
+    
+    if (!gkSection || !gkQueueListEl) return;
+
+    const hasGkActivity = (gkQueue && gkQueue.length > 0) || nextGk;
+    if (!hasGkActivity) {
+        gkSection.classList.add('hidden');
+        return;
+    }
+    gkSection.classList.remove('hidden');
+
+    const count = gkQueue ? gkQueue.length : 0;
+    if (gkCountBadge) {
+        gkCountBadge.textContent = `${count} Goleiro(s)`;
+    }
+
+    if (nextGkContainer) {
+        if (nextGk) {
+            nextGkContainer.innerHTML = `
+                <div class="next-gk-card">
+                    <span class="num-badge">🧤 PRÓXIMO GOLEIRO</span>
+                    <h4>${nextGk.name} ${nextGk.is_paying ? '💳' : ''}</h4>
+                    <p>${nextGk.cycles_waiting} rodada(s) esperando</p>
+                </div>
+            `;
+            nextGkContainer.classList.remove('hidden');
+        } else {
+            nextGkContainer.innerHTML = '';
+            nextGkContainer.classList.add('hidden');
+        }
+    }
+
+    gkQueueListEl.innerHTML = '';
+    if (!gkQueue || gkQueue.length === 0) {
+        gkQueueListEl.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum goleiro aguardando na fila.</td></tr>`;
+        return;
+    }
+
+    gkQueue.forEach((p, index) => {
+        const tr = document.createElement('tr');
+        const payBadge = p.is_paying 
+            ? `<span class="status-badge paid ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para desmarcar pagamento' : 'Status de pagamento'}">💳 Pago</span>` 
+            : `<span class="status-badge pending ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para marcar como pago' : 'Status de pagamento'}">❌ Pendente</span>`;
+
+        tr.innerHTML = `
+            <td data-label="">#${index + 1}</td>
+            <td data-label="Nome">
+                <strong>${p.name}</strong>
+                <span class="status-badge goalkeeper ${isAdmin ? 'clickable-badge' : ''}" style="font-size: 0.7rem; margin-left: 0.25rem;" title="${isAdmin ? 'Clique para alternar para Jogador de Linha' : 'Goleiro'}">🧤 Gol</span>
+            </td>
+            <td data-label="Rodadas">${p.cycles_waiting} rodada(s)</td>
+            <td data-label="Status">${payBadge}</td>
+            <td class="action-cell"></td>
+        `;
+
+        if (isAdmin) {
+            const gkBadgeEl = tr.querySelector('.status-badge.goalkeeper.clickable-badge');
+            if (gkBadgeEl) {
+                gkBadgeEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handleSetGoalkeeper(p.id, false);
+                });
+            }
+
+            const payBadgeEl = tr.querySelector('.status-badge.paid.clickable-badge, .status-badge.pending.clickable-badge');
+            if (payBadgeEl) {
+                payBadgeEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handleSetPayment(p.id, !p.is_paying);
+                });
+            }
+
+            const actionTd = tr.querySelector('.action-cell');
+            const checkoutBtn = document.createElement('button');
+            checkoutBtn.className = 'btn-action-sm checkout';
+            checkoutBtn.textContent = '👋 Saiu';
+            checkoutBtn.onclick = () => handleCheckoutPlayer(p);
+            actionTd.appendChild(checkoutBtn);
+        }
+
+        gkQueueListEl.appendChild(tr);
+    });
+}
+
 function renderNextTeam(nextPlayers, isAdmin) {
     nextTeamListEl.innerHTML = '';
     if (!nextPlayers || nextPlayers.length === 0) {
@@ -1406,12 +2066,17 @@ function renderNextTeam(nextPlayers, isAdmin) {
 
     nextTeamCountBadge.textContent = `${nextPlayers.length} Jogador(es)`;
 
+    const singular = currentBalanceConfig.label.endsWith('s') ? currentBalanceConfig.label.slice(0, -1) : currentBalanceConfig.label;
+
     nextPlayers.forEach((p, index) => {
         const card = document.createElement('div');
         card.className = 'next-player-card';
+        const catBadge = p.is_special_category 
+            ? `<span class="player-category-pill" style="margin-left: 0.2rem; font-size: 0.7rem;">${currentBalanceConfig.emoji} ${singular}</span>`
+            : '';
         card.innerHTML = `
             <span class="num-badge">PRÓXIMO #${index + 1}</span>
-            <h4>${p.name} ${p.is_paying ? '💳' : ''}</h4>
+            <h4>${p.name} ${catBadge} ${p.is_paying ? '💳' : ''}</h4>
             <p>${p.cycles_waiting} rodada(s) esperando</p>
             <div class="next-player-action" style="margin-top: 0.5rem;"></div>
         `;
@@ -1447,9 +2112,11 @@ function renderPendingCheckinList(allPlayers, isAdmin) {
         const card = document.createElement('div');
         card.className = 'pending-checkin-card';
         const payStatus = p.is_paying ? `<span class="badge paid sm" style="font-size:0.75rem;">💳 Pago</span>` : `<span class="badge pending sm" style="font-size:0.75rem;">❌ Pendente</span>`;
+        const gkTag = p.is_goalkeeper ? `<span class="badge sm" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; font-size:0.75rem;">🧤 Gol</span>` : '';
+        const catTag = p.is_special_category ? `<span class="badge sm" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size:0.75rem;">${currentBalanceConfig.emoji}</span>` : '';
         card.innerHTML = `
             <div class="player-info-sub">
-                <span class="player-name">${p.name}</span>
+                <span class="player-name">${p.name} ${gkTag} ${catTag}</span>
                 <div>${payStatus}</div>
             </div>
             <div class="card-action"></div>
@@ -1485,19 +2152,62 @@ function renderMatchQueue(queuePlayers, isAdmin) {
         return;
     }
 
+    const singular = currentBalanceConfig.label.endsWith('s') ? currentBalanceConfig.label.slice(0, -1) : currentBalanceConfig.label;
+
     queuePlayers.forEach((p, index) => {
         const tr = document.createElement('tr');
-        const payBadge = p.is_paying ? `<span class="status-badge paid" style="font-size:0.75rem;">💳 Pago</span>` : `<span class="status-badge pending" style="font-size:0.75rem;">❌ Pendente</span>`;
+        const payBadge = p.is_paying 
+            ? `<span class="status-badge paid ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para desmarcar pagamento' : 'Status de pagamento'}">💳 Pago</span>` 
+            : `<span class="status-badge pending ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para marcar como pago' : 'Status de pagamento'}">❌ Pendente</span>`;
+
+        const gkBadge = p.is_goalkeeper
+            ? `<span class="status-badge goalkeeper ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.72rem;" title="${isAdmin ? 'Clique para alternar para Linha' : 'Goleiro'}">🧤 Gol</span>`
+            : (isAdmin ? `<span class="status-badge goalkeeper default clickable-badge" style="font-size:0.72rem;" title="Clique para definir como Goleiro">⚽ Linha</span>` : '');
+
+        const catBadge = p.is_special_category 
+            ? `<span class="status-badge category ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.72rem;" title="${isAdmin ? 'Clique para alternar categoria' : currentBalanceConfig.label}">${currentBalanceConfig.emoji} ${singular}</span>`
+            : (isAdmin ? `<span class="status-badge category default clickable-badge" style="font-size:0.72rem;" title="Clique para marcar como ${currentBalanceConfig.label}">👤 Normal</span>` : '');
+
+        const quotaBadge = p.is_skipped_by_quota 
+            ? `<span class="status-badge skipped-quota" title="Aguardando próxima vaga para manter limite de 1 por time">⏳ Aguarda vaga</span>`
+            : '';
 
         tr.innerHTML = `
             <td data-label="">#${index + 1}</td>
-            <td data-label="Nome"><strong>${p.name}</strong></td>
+            <td data-label="Nome">
+                <strong>${p.name}</strong>
+                ${quotaBadge}
+            </td>
             <td data-label="Rodadas">${p.cycles_waiting} rodada(s)</td>
-            <td data-label="Pagamento">${payBadge}</td>
+            <td data-label="Status">${gkBadge} ${catBadge} ${payBadge}</td>
             <td class="action-cell"></td>
         `;
 
         if (isAdmin) {
+            const gkBadgeEl = tr.querySelector('.status-badge.goalkeeper.clickable-badge');
+            if (gkBadgeEl) {
+                gkBadgeEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handleSetGoalkeeper(p.id, !p.is_goalkeeper);
+                });
+            }
+
+            const catBadgeEl = tr.querySelector('.status-badge.category.clickable-badge');
+            if (catBadgeEl) {
+                catBadgeEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handleSetCategory(p.id, !p.is_special_category);
+                });
+            }
+
+            const payBadgeEl = tr.querySelector('.status-badge.paid.clickable-badge, .status-badge.pending.clickable-badge');
+            if (payBadgeEl) {
+                payBadgeEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handleSetPayment(p.id, !p.is_paying);
+                });
+            }
+
             const actionTd = tr.querySelector('.action-cell');
             const checkoutBtn = document.createElement('button');
             checkoutBtn.className = 'btn-action-sm checkout';
@@ -1619,5 +2329,689 @@ async function handleDrawTeams() {
     }
 }
 
+// ==========================================
+// Search & Chip Filters Setup
+// ==========================================
+
+function setupSearchAndFilters() {
+    if (playerSearchInput) {
+        playerSearchInput.addEventListener('input', (e) => {
+            searchQuery = e.target.value.toLowerCase().trim();
+            if (clearSearchBtn) {
+                if (searchQuery) {
+                    clearSearchBtn.classList.remove('hidden');
+                } else {
+                    clearSearchBtn.classList.add('hidden');
+                }
+            }
+            renderAllTables(currentPlayers);
+        });
+    }
+
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', () => {
+            searchQuery = '';
+            if (playerSearchInput) playerSearchInput.value = '';
+            clearSearchBtn.classList.add('hidden');
+            renderAllTables(currentPlayers);
+        });
+    }
+
+    const chipFilters = document.querySelectorAll('.chip-filter');
+    chipFilters.forEach(chip => {
+        chip.addEventListener('click', () => {
+            chipFilters.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            paymentFilter = chip.getAttribute('data-filter') || 'all';
+            renderPaymentTable(currentPlayers);
+        });
+    });
+}
+
+function handleCopyPaidList() {
+    if (!currentPlayers || currentPlayers.length === 0) {
+        showToast('Nenhum jogador na lista para copiar.');
+        return;
+    }
+
+    const youthEmoji = (currentBalanceConfig && currentBalanceConfig.emoji) || '🧒';
+    const relevant = currentPlayers;
+    const paid = relevant.filter(p => p.is_paying);
+    const pending = relevant.filter(p => !p.is_paying);
+    const percent = relevant.length > 0 ? Math.round((paid.length / relevant.length) * 100) : 0;
+
+    const dateStr = activeSessionDate ? new Date(activeSessionDate).toLocaleDateString('pt-BR') : 'Hoje';
+    const checkinUrl = activeSessionCheckinCode ? `${window.location.origin}/#/checkin/${activeSessionCheckinCode}` : `${window.location.origin}`;
+
+    let text = `⚽ *Pelada ${dateStr} - Lista de Pagamentos*\n`;
+    text += `💰 *Status:* ${paid.length}/${relevant.length} pagos (${percent}%)\n\n`;
+
+    if (paid.length > 0) {
+        text += `💳 *PAGOS (${paid.length}):*\n`;
+        paid.forEach((p, idx) => {
+            const gkTag = p.is_goalkeeper ? ' 🧤' : '';
+            const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
+            text += `${idx + 1}. ✅ ${p.name}${gkTag}${youthTag}\n`;
+        });
+        text += `\n`;
+    }
+
+    if (pending.length > 0) {
+        text += `❌ *PENDENTES (${pending.length}):*\n`;
+        pending.forEach((p, idx) => {
+            const gkTag = p.is_goalkeeper ? ' 🧤' : '';
+            const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
+            text += `${idx + 1}. ❌ ${p.name}${gkTag}${youthTag}\n`;
+        });
+        text += `\n`;
+    }
+
+    text += `📍 *Fazer Check-in:* ${checkinUrl}`;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('📋 Lista de pagantes copiada!');
+        }).catch(err => {
+            console.error('Erro ao copiar:', err);
+            promptFallbackCopy(text);
+        });
+    } else {
+        promptFallbackCopy(text);
+    }
+}
+
+function handleCopyPresenceList() {
+    if (!currentPlayers || currentPlayers.length === 0) {
+        showToast('Nenhum jogador na lista para copiar.');
+        return;
+    }
+
+    const youthEmoji = (currentBalanceConfig && currentBalanceConfig.emoji) || '🧒';
+
+    // 1. Goleiros confirmados
+    const confirmedGks = currentPlayers.filter(p => (p.is_confirmed || p.has_arrived) && p.is_goalkeeper);
+
+    // 2. Linha confirmada (Pagos)
+    const confirmedPaid = currentPlayers.filter(p => (p.is_confirmed || p.has_arrived) && !p.is_goalkeeper && p.is_paying);
+
+    // 3. Linha confirmada (Pendente)
+    const confirmedPending = currentPlayers.filter(p => (p.is_confirmed || p.has_arrived) && !p.is_goalkeeper && !p.is_paying);
+
+    // 4. Pagos que não irão
+    const absentPaid = currentPlayers.filter(p => (!p.is_confirmed && !p.has_arrived) && p.is_paying);
+
+    const dateStr = activeSessionDate ? new Date(activeSessionDate).toLocaleDateString('pt-BR') : 'Hoje';
+    const checkinUrl = activeSessionCheckinCode ? `${window.location.origin}/#/checkin/${activeSessionCheckinCode}` : `${window.location.origin}`;
+
+    let text = `⚽ *Lista de Presença - Pelada ${dateStr}*\n\n`;
+
+    // Seção separada de Goleiros
+    text += `🧤 *Goleiros* (${confirmedGks.length})\n`;
+    if (confirmedGks.length > 0) {
+        confirmedGks.forEach((p, idx) => {
+            const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
+            const payTag = p.is_paying ? ' (Pago)' : ' (Pendente)';
+            text += `${idx + 1} - ${p.name}${youthTag}${payTag}\n`;
+        });
+    } else {
+        text += `_Nenhum_\n`;
+    }
+    text += `\n`;
+
+    // Presença confirmada (Linha - Pagos)
+    text += `🟢 *Presença confirmada (Linha - Pagos)* (${confirmedPaid.length})\n`;
+    if (confirmedPaid.length > 0) {
+        confirmedPaid.forEach((p, idx) => {
+            const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
+            text += `${idx + 1} - ${p.name}${youthTag}\n`;
+        });
+    } else {
+        text += `_Nenhum_\n`;
+    }
+    text += `\n`;
+
+    // Presença confirmada (Linha - Pendente)
+    text += `⏳ *Presença confirmada (Linha - Pendente)* (${confirmedPending.length})\n`;
+    if (confirmedPending.length > 0) {
+        confirmedPending.forEach((p, idx) => {
+            const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
+            text += `${idx + 1} - ${p.name}${youthTag}\n`;
+        });
+    } else {
+        text += `_Nenhum_\n`;
+    }
+    text += `\n`;
+
+    // Pagos que não irão
+    text += `🏖️ *Pagos que não irão* (${absentPaid.length})\n`;
+    if (absentPaid.length > 0) {
+        absentPaid.forEach((p, idx) => {
+            const gkTag = p.is_goalkeeper ? ' 🧤' : '';
+            const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
+            text += `${idx + 1} - ${p.name}${gkTag}${youthTag}\n`;
+        });
+    } else {
+        text += `_Nenhum_\n`;
+    }
+    text += `\n`;
+
+    text += `📍 *Fazer Check-in:* ${checkinUrl}`;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('📋 Lista de presença copiada!');
+        }).catch(err => {
+            console.error('Erro ao copiar:', err);
+            promptFallbackCopy(text, '📋 Lista de presença copiada!');
+        });
+    } else {
+        promptFallbackCopy(text, '📋 Lista de presença copiada!');
+    }
+}
+
+function promptFallbackCopy(text, msg = '📋 Lista copiada!') {
+    const tempInput = document.createElement('textarea');
+    tempInput.value = text;
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    document.execCommand('copy');
+    document.body.removeChild(tempInput);
+    showToast(msg);
+}
+
+function handleOpenQrModal() {
+    let code = activeSessionCheckinCode;
+    if (!code && activeSessionId) {
+        const sess = currentSessions.find(s => s.id === activeSessionId);
+        if (sess) code = sess.checkin_code || sess.public_hash;
+    }
+    if (!code && currentPublicHash) {
+        code = currentPublicHash;
+    }
+
+    if (!code) {
+        alert('Código de check-in não encontrado para esta pelada.');
+        return;
+    }
+
+    const checkinUrl = `${window.location.origin}/#/checkin/${code}`;
+    if (qrCodeUrlText) qrCodeUrlText.textContent = checkinUrl;
+
+    const qrTarget = document.getElementById('qr-code-target');
+    if (qrTarget) {
+        renderQRCode(checkinUrl, qrTarget);
+    }
+
+    openModal(qrCodeModal);
+}
+
+// ==========================================
+// Check-in View Implementation
+// ==========================================
+
+function setupCheckinListeners() {
+    if (checkinNameInput) {
+        checkinNameInput.addEventListener('input', handleCheckinInput);
+        checkinNameInput.addEventListener('focus', handleCheckinInput);
+        checkinNameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleCheckinSubmit();
+            }
+        });
+    }
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#checkin-form-container') && checkinSuggestions) {
+            checkinSuggestions.classList.add('hidden');
+        }
+    });
+
+    if (btnSubmitCheckin) {
+        btnSubmitCheckin.addEventListener('click', handleCheckinSubmit);
+    }
+
+    if (btnGotoMatch) {
+        btnGotoMatch.addEventListener('click', () => {
+            if (checkinSessionData && checkinSessionData.public_hash) {
+                window.location.hash = `#/match/${checkinSessionData.public_hash}`;
+            }
+        });
+    }
+
+    if (btnCheckinAnother) {
+        btnCheckinAnother.addEventListener('click', () => {
+            if (checkinFormContainer) checkinFormContainer.classList.remove('hidden');
+            if (checkinSuccessContainer) checkinSuccessContainer.classList.add('hidden');
+            if (checkinNameInput) {
+                checkinNameInput.value = '';
+                checkinNameInput.focus();
+            }
+            checkinSelectedPlayer = null;
+            if (checkinCurrentCode) loadCheckinView(checkinCurrentCode);
+        });
+    }
+}
+
+async function loadCheckinView(checkinCode) {
+    checkinCurrentCode = checkinCode;
+    showView('checkin');
+
+    if (checkinFormContainer) checkinFormContainer.classList.remove('hidden');
+    if (checkinSuccessContainer) checkinSuccessContainer.classList.add('hidden');
+    if (checkinSuggestions) checkinSuggestions.classList.add('hidden');
+    if (checkinNameInput) checkinNameInput.value = '';
+    checkinSelectedPlayer = null;
+
+    try {
+        const response = await fetch(`${API_BASE}/checkin/${checkinCode}`);
+        if (!response.ok) {
+            throw new Error('Pelada não encontrada');
+        }
+
+        checkinSessionData = await response.json();
+        renderCheckinViewData(checkinSessionData);
+    } catch (err) {
+        console.error('Erro ao carregar dados de check-in:', err);
+        if (checkinPeladaTitle) checkinPeladaTitle.textContent = 'Pelada Não Encontrada';
+        if (checkinPeladaSubtitle) checkinPeladaSubtitle.textContent = 'Verifique o link ou QR Code escaneado.';
+    }
+}
+
+function renderCheckinViewData(data) {
+    const date = data.created_at ? new Date(data.created_at) : new Date();
+    const formattedDate = new Intl.DateTimeFormat('pt-BR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long'
+    }).format(date);
+
+    if (checkinPeladaTitle) {
+        checkinPeladaTitle.textContent = `Pelada #${data.session_id}`;
+    }
+    if (checkinPeladaSubtitle) {
+        checkinPeladaSubtitle.textContent = `${formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1)} • Auto Check-in`;
+    }
+
+    if (checkinSessionStatusBadge) {
+        if (data.is_active) {
+            checkinSessionStatusBadge.className = 'badge active';
+            checkinSessionStatusBadge.textContent = '⚽ Pelada em andamento';
+        } else {
+            checkinSessionStatusBadge.className = 'badge inactive';
+            checkinSessionStatusBadge.textContent = '🛑 Pelada finalizada';
+        }
+    }
+
+    // Render quick selection name chips
+    if (checkinQuickNames) {
+        checkinQuickNames.innerHTML = '';
+        const players = data.players || [];
+        const confirmedList = players.filter(p => p.is_confirmed || !p.has_arrived);
+
+        if (confirmedList.length === 0) {
+            const quickSelectSec = document.getElementById('checkin-quick-select-section');
+            if (quickSelectSec) quickSelectSec.classList.add('hidden');
+        } else {
+            const quickSelectSec = document.getElementById('checkin-quick-select-section');
+            if (quickSelectSec) quickSelectSec.classList.remove('hidden');
+
+            confirmedList.forEach(p => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = `quick-name-chip ${p.has_arrived ? 'arrived' : ''}`;
+                chip.innerHTML = `${p.has_arrived ? '✅' : '⚪'} ${p.name} ${p.is_paying ? '<span style="font-size:0.75rem;">💳</span>' : ''}`;
+                
+                if (!p.has_arrived) {
+                    chip.addEventListener('click', () => {
+                        document.querySelectorAll('.quick-name-chip').forEach(c => c.classList.remove('selected'));
+                        chip.classList.add('selected');
+                        checkinSelectedPlayer = p;
+                        if (checkinNameInput) {
+                            checkinNameInput.value = p.name;
+                            if (checkinSuggestions) checkinSuggestions.classList.add('hidden');
+                        }
+                    });
+                }
+                checkinQuickNames.appendChild(chip);
+            });
+        }
+    }
+}
+
+function handleCheckinInput(e) {
+    const val = (e.target.value || '').trim().toLowerCase();
+    if (!checkinSuggestions || !checkinSessionData) return;
+
+    const players = checkinSessionData.players || [];
+    if (!val) {
+        checkinSuggestions.classList.add('hidden');
+        return;
+    }
+
+    const matches = players.filter(p => p.name.toLowerCase().includes(val));
+    if (matches.length === 0) {
+        checkinSuggestions.innerHTML = `<div style="padding: 0.75rem 1rem; color: #ef4444; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">⚠️ Jogador não cadastrado na pelada.</div>`;
+        checkinSuggestions.classList.remove('hidden');
+        return;
+    }
+
+    checkinSuggestions.innerHTML = '';
+    matches.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'suggestion-item';
+        item.innerHTML = `
+            <span class="suggestion-name">${p.name}</span>
+            <span style="font-size: 0.8rem; font-weight: 600; color: ${p.has_arrived ? '#10b981' : (p.is_paying ? '#34d399' : '#f87171')};">
+                ${p.has_arrived ? '✅ Na Quadra' : (p.is_paying ? '💳 Pago (Liberado)' : '❌ Pagamento Pendente')}
+            </span>
+        `;
+        item.addEventListener('click', () => {
+            checkinNameInput.value = p.name;
+            checkinSelectedPlayer = p;
+            checkinSuggestions.classList.add('hidden');
+        });
+        checkinSuggestions.appendChild(item);
+    });
+
+    checkinSuggestions.classList.remove('hidden');
+}
+
+async function handleCheckinSubmit() {
+    const name = (checkinNameInput ? checkinNameInput.value : '').trim();
+    if (!name) {
+        alert('Por favor, digite seu nome ou selecione na lista.');
+        if (checkinNameInput) checkinNameInput.focus();
+        return;
+    }
+
+    if (!checkinCurrentCode) return;
+
+    const players = checkinSessionData ? (checkinSessionData.players || []) : [];
+    let playerObj = checkinSelectedPlayer;
+    if (!playerObj) {
+        playerObj = players.find(p => p.name.toLowerCase() === name.toLowerCase());
+    }
+
+    if (!playerObj) {
+        alert(`⚠️ O jogador "${name}" não foi encontrado na lista desta pelada.\n\nO auto check-in só é permitido para jogadores pré-cadastrados. Solicite ao administrador para incluir seu nome na lista.`);
+        return;
+    }
+
+    if (!playerObj.is_paying) {
+        alert(`⚠️ Olá, ${playerObj.name}!\n\nSeu pagamento consta como PENDENTE. O auto check-in só é liberado para jogadores com pagamento confirmado.\n\nEfetue o pagamento ou solicite a liberação com o administrador da pelada.`);
+        return;
+    }
+
+    if (btnSubmitCheckin) {
+        btnSubmitCheckin.disabled = true;
+        btnSubmitCheckin.textContent = '⏳ Registrando chegada...';
+    }
+
+    try {
+        const payload = { name: playerObj.name, player_id: playerObj.id };
+
+        const res = await fetch(`${API_BASE}/checkin/${checkinCurrentCode}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            alert(`Aviso: ${err.detail || 'Falha ao registrar check-in'}`);
+            return;
+        }
+
+        const result = await res.json();
+        renderCheckinSuccess(result);
+    } catch (err) {
+        console.error('Erro no checkin:', err);
+        alert('Erro de conexão ao realizar check-in.');
+    } finally {
+        if (btnSubmitCheckin) {
+            btnSubmitCheckin.disabled = false;
+            btnSubmitCheckin.textContent = '📍 Confirmar Chegada (Cheguei!)';
+        }
+    }
+}
+
+function renderCheckinSuccess(result) {
+    if (checkinFormContainer) checkinFormContainer.classList.add('hidden');
+    if (checkinSuccessContainer) checkinSuccessContainer.classList.remove('hidden');
+
+    const player = result.player || {};
+    if (checkinSuccessPlayerName) checkinSuccessPlayerName.textContent = `${player.name}`;
+    if (checkinSuccessMsg) checkinSuccessMsg.textContent = result.message || 'Chegada registrada na quadra!';
+
+    if (checkinOrderBadge) {
+        checkinOrderBadge.textContent = player.arrival_order ? `#${player.arrival_order}` : 'Confirmado';
+    }
+
+    if (checkinQueueBadge) {
+        if (player.is_playing) {
+            checkinQueueBadge.textContent = '⚽ Em Quadra';
+            checkinQueueBadge.style.color = '#10b981';
+        } else if (player.is_next_team) {
+            checkinQueueBadge.textContent = '🔥 Próximo Time';
+            checkinQueueBadge.style.color = '#f59e0b';
+        } else if (player.queue_position) {
+            checkinQueueBadge.textContent = `Fila #${player.queue_position}`;
+            checkinQueueBadge.style.color = '#38bdf8';
+        } else {
+            checkinQueueBadge.textContent = 'Aguardando';
+            checkinQueueBadge.style.color = '#94a3b8';
+        }
+    }
+
+    if (checkinPayBadge) {
+        if (player.is_paying) {
+            checkinPayBadge.textContent = '💳 Pago';
+            checkinPayBadge.style.color = '#10b981';
+        } else {
+            checkinPayBadge.textContent = '❌ Pendente';
+            checkinPayBadge.style.color = '#ef4444';
+        }
+    }
+
+    showToast(`📍 Check-in confirmado para ${player.name}!`);
+}
+
+// ==========================================
+// Standard Compliant QR Code Generator
+// ==========================================
+
+function renderQRCode(text, containerEl) {
+    if (!containerEl) return;
+    containerEl.innerHTML = '';
+
+    if (typeof QRCode !== 'undefined') {
+        new QRCode(containerEl, {
+            text: text,
+            width: 220,
+            height: 220,
+            colorDark: '#0f172a',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    } else {
+        containerEl.innerHTML = `<p style="color: #ef4444; font-size: 0.85rem;">Carregando biblioteca de QR Code...</p>`;
+    }
+}
+
+// ==========================================
+// WhatsApp List Import
+// ==========================================
+
+function setupImportWhatsappListeners() {
+    const btnImportWpp = document.getElementById('btn-import-wpp');
+    const importWppModal = document.getElementById('import-wpp-modal');
+    const closeImportWppBtn = document.getElementById('close-import-wpp-modal-btn');
+    const cancelImportWppBtn = document.getElementById('btn-cancel-import-wpp');
+    const importWppText = document.getElementById('import-wpp-text');
+    const submitImportWppBtn = document.getElementById('btn-submit-import-wpp');
+
+    if (btnImportWpp) {
+        btnImportWpp.addEventListener('click', () => {
+            if (importWppText) {
+                importWppText.value = '';
+            }
+            updateImportWppPreview('');
+            openModal(importWppModal);
+            if (importWppText) importWppText.focus();
+        });
+    }
+
+    if (closeImportWppBtn) {
+        closeImportWppBtn.addEventListener('click', () => closeModal(importWppModal));
+    }
+    if (cancelImportWppBtn) {
+        cancelImportWppBtn.addEventListener('click', () => closeModal(importWppModal));
+    }
+
+    if (importWppText) {
+        importWppText.addEventListener('input', (e) => {
+            updateImportWppPreview(e.target.value);
+        });
+    }
+
+    if (submitImportWppBtn) {
+        submitImportWppBtn.addEventListener('click', handleSubmitImportWpp);
+    }
+}
+
+function parseWhatsappTextJS(rawText) {
+    if (!rawText || !rawText.trim()) return [];
+    const lines = rawText.split('\n');
+    const names = [];
+    const ignoreKeywords = [
+        "ranca", "pelada", "futebol", "coletes", "cores", "convidado", 
+        "jogadores", "horário", "horario", "local", "quadra", "regras", "pix"
+    ];
+
+    lines.forEach(line => {
+        const lineClean = line.trim();
+        if (!lineClean) return;
+
+        let match = lineClean.match(/^\s*([0-9]{1,3})\s*[\-\.\)\:\–\—]\s*(.+)$/);
+        if (!match) {
+            match = lineClean.match(/^\s*([0-9]{1,3})\s+([A-Za-zÀ-ÖØ-öø-ÿ].+)$/);
+        }
+
+        if (match) {
+            let candidate = match[2].trim();
+            candidate = candidate.replace(/[^\w\s\.\-À-ÖØ-öø-ÿ]/g, '').trim();
+            candidate = candidate.replace(/\b(goleiro|gol|gk|pago|pendente|convidado|mensalista|confirmado)\b/gi, '').trim();
+            candidate = candidate.replace(/[\(\)\[\]\-]+$/g, '').trim();
+
+            if (candidate && candidate.length >= 2) {
+                const lower = candidate.toLowerCase();
+                if (!ignoreKeywords.some(kw => lower.startsWith(kw))) {
+                    names.push(candidate);
+                }
+            }
+        }
+    });
+
+    return names;
+}
+
+function updateImportWppPreview(text) {
+    const previewSection = document.getElementById('import-wpp-preview-section');
+    const countBadge = document.getElementById('import-wpp-count-badge');
+    const namesContainer = document.getElementById('import-wpp-names-container');
+    const submitBtn = document.getElementById('btn-submit-import-wpp');
+
+    const names = parseWhatsappTextJS(text);
+
+    if (names.length > 0) {
+        if (previewSection) previewSection.classList.remove('hidden');
+        if (countBadge) countBadge.textContent = `${names.length} jogador(es)`;
+        if (namesContainer) {
+            namesContainer.innerHTML = names.map(n => `<span class="badge secondary" style="font-size: 0.8rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 0.25rem 0.5rem; border-radius: 6px;">👤 ${n}</span>`).join('');
+        }
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = `Confirmar Importação (${names.length} jogadores)`;
+        }
+    } else {
+        if (previewSection) previewSection.classList.add('hidden');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Confirmar Importação';
+        }
+    }
+}
+
+async function handleSubmitImportWpp() {
+    const importWppText = document.getElementById('import-wpp-text');
+    const importWppModal = document.getElementById('import-wpp-modal');
+    const checkArrived = document.getElementById('import-wpp-check-arrived');
+    const checkPaid = document.getElementById('import-wpp-check-paid');
+    const submitBtn = document.getElementById('btn-submit-import-wpp');
+
+    const text = importWppText ? importWppText.value.trim() : '';
+    if (!text) return;
+
+    const markArrived = checkArrived ? checkArrived.checked : false;
+    const markPaid = checkPaid ? checkPaid.checked : false;
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Importando...';
+    }
+
+    try {
+        if (activeSessionId) {
+            const adminKey = getAdminKey();
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/import-whatsapp?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/import-whatsapp`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: text,
+                    mark_arrived: markArrived,
+                    mark_paid: markPaid
+                })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                alert(`Erro: ${err.detail || 'Falha ao importar lista'}`);
+                return;
+            }
+
+            const data = await res.json();
+            closeModal(importWppModal);
+            showToast(`📋 ${data.imported_count} jogador(es) importados do WhatsApp!`);
+            await loadSessionDetails(activeSessionId, activeSessionDate);
+        } else if (currentPublicHash) {
+            let url = `${API_BASE}/sessions/hash/${currentPublicHash}/import-whatsapp`;
+            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: text,
+                    mark_arrived: markArrived,
+                    mark_paid: markPaid
+                })
+            });
+
+            if (res.ok) {
+                closeModal(importWppModal);
+                showToast(`📋 Jogadores importados com sucesso!`);
+                await fetchMatchData(currentPublicHash, currentAdminToken);
+            }
+        }
+    } catch (err) {
+        console.error('Erro ao importar lista WhatsApp:', err);
+        alert('Erro de conexão ao importar lista do WhatsApp.');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+        }
+    }
+}
 
 

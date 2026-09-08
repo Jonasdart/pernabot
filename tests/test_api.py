@@ -335,6 +335,169 @@ def test_batch_player_actions(client_and_db):
     assert p_map2[p2]["has_arrived"] is False
     assert p_map2[p3]["has_arrived"] is True
 
+def test_self_checkin_and_persistent_code(client_and_db):
+    client, session_id = client_and_db
+    
+    # 1. Get checkin info
+    sessions_resp = client.get("/sessions")
+    s_data = sessions_resp.json()[0]
+    checkin_code = s_data["checkin_code"]
+    assert checkin_code is not None
+
+    info_resp = client.get(f"/checkin/{checkin_code}")
+    assert info_resp.status_code == 200
+    info_data = info_resp.json()
+    assert info_data["session_id"] == session_id
+    assert len(info_data["players"]) == 2
+
+    # 2. Self checkin with unregistered player -> Must be blocked (400)
+    checkin_unregistered = client.post(f"/checkin/{checkin_code}", json={"name": "Jogador Nao Cadastrado"})
+    assert checkin_unregistered.status_code == 400
+
+    # 3. Add registered player with unpaid status -> Must be blocked (400)
+    p_add = client.post(f"/sessions/{session_id}/players", json={"name": "Jogador Unpaid", "is_paying": False})
+    p_unpaid_id = p_add.json()["player_id"]
+    checkin_unpaid = client.post(f"/checkin/{checkin_code}", json={"player_id": p_unpaid_id})
+    assert checkin_unpaid.status_code == 400
+
+    # 4. Pay player -> Self checkin must succeed (200)
+    client.post(f"/sessions/{session_id}/players/{p_unpaid_id}/pagamento", json={"player_id": p_unpaid_id, "is_paying": True})
+    checkin_paid = client.post(f"/checkin/{checkin_code}", json={"player_id": p_unpaid_id})
+    assert checkin_paid.status_code == 200
+    res_data = checkin_paid.json()
+    assert res_data["success"] is True
+    assert res_data["player"]["has_arrived"] is True
+
+    # 5. Check that restarted session maintains the same checkin_code
+    restart_resp = client.post(f"/sessions/{session_id}/recomecar")
+    assert restart_resp.status_code == 200
+    restarted_data = restart_resp.json()
+    new_session_id = restarted_data["new_session_id"]
+    
+    new_info_resp = client.get(f"/checkin/{checkin_code}")
+    assert new_info_resp.status_code == 200
+    assert new_info_resp.json()["session_id"] == new_session_id
+
+def test_import_whatsapp_list(client_and_db):
+    client, session_id = client_and_db
+    
+    raw_wpp = """Ranca terça às 18:30
+
+Coletes nas cores vermelha e amarela
+
+Não levem convidado se a lista der mais de 15 jogadores
+
+1 - jhimy
+2 - jefin
+3 - Danilo
+4 - Rafael Vitor
+5 - Jonas
+6 - André
+7 - Henrique
+8 - Edivan
+9 - raoni
+10- Alexandre
+11 - Pablo
+12- Anderson
+13-Alcides
+14 CARDOZO
+"""
+    res = client.post(f"/sessions/{session_id}/import-whatsapp", json={
+        "text": raw_wpp,
+        "mark_arrived": True,
+        "mark_paid": True
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["imported_count"] == 14
+    assert "jhimy" in data["player_names"]
+    assert "CARDOZO" in data["player_names"]
+
+    # Verify players in DB
+    players_res = client.get(f"/sessions/{session_id}/players")
+    p_names = [p["name"] for p in players_res.json()]
+    assert "jhimy" in p_names
+    assert "Alcides" in p_names
+    assert "CARDOZO" in p_names
+    for p in players_res.json():
+        if p["name"] == "jhimy":
+            assert p["has_arrived"] is True
+            assert p["is_paying"] is True
+            assert p["is_confirmed"] is True
+
+def test_delete_and_batch_remove_player(client_and_db):
+    client, session_id = client_and_db
+    
+    # Add player
+    add_resp = client.post(f"/sessions/{session_id}/players", json={"name": "Player_To_Delete", "is_paying": False})
+    assert add_resp.status_code == 200
+    p_id = add_resp.json()["player_id"]
+    
+    # 1. Delete single player
+    del_resp = client.delete(f"/sessions/{session_id}/players/{p_id}")
+    assert del_resp.status_code == 200
+    
+    players_res = client.get(f"/sessions/{session_id}/players")
+    p_names = [p["name"] for p in players_res.json()]
+    assert "Player_To_Delete" not in p_names
+
+    # 2. Batch remove
+    p1 = client.post(f"/sessions/{session_id}/players", json={"name": "Batch_Del_1"}).json()["player_id"]
+    p2 = client.post(f"/sessions/{session_id}/players", json={"name": "Batch_Del_2"}).json()["player_id"]
+    
+    batch_resp = client.post(f"/sessions/{session_id}/batch-action", json={
+        "player_ids": [p1, p2],
+        "action": "remove"
+    })
+    assert batch_resp.status_code == 200
+    assert batch_resp.json()["updated_count"] == 2
+    
+    players_res2 = client.get(f"/sessions/{session_id}/players")
+    p_names2 = [p["name"] for p in players_res2.json()]
+    assert "Batch_Del_1" not in p_names2
+    assert "Batch_Del_2" not in p_names2
+
+def test_presence_status_toggle_endpoint(client_and_db):
+    client, session_id = client_and_db
+    
+    add_resp = client.post(f"/sessions/{session_id}/players", json={"name": "Player_Presence_Test", "is_confirmed": True})
+    assert add_resp.status_code == 200
+    p_id = add_resp.json()["player_id"]
+    
+    # 1. Toggle to absent (is_confirmed=False)
+    unconfirm_res = client.post(f"/sessions/{session_id}/players/{p_id}/presenca", json={"is_confirmed": False})
+    assert unconfirm_res.status_code == 200
+    assert unconfirm_res.json()["is_confirmed"] is False
+    
+    # 2. Toggle back to confirmed (is_confirmed=True)
+    confirm_res = client.post(f"/sessions/{session_id}/players/{p_id}/presenca", json={"is_confirmed": True})
+    assert confirm_res.status_code == 200
+    assert confirm_res.json()["is_confirmed"] is True
+
+def test_rename_player_endpoint(client_and_db):
+    client, session_id = client_and_db
+    
+    add_resp = client.post(f"/sessions/{session_id}/players", json={"name": "Player_Old_Name"})
+    assert add_resp.status_code == 200
+    p_id = add_resp.json()["player_id"]
+    
+    # Rename player
+    rename_resp = client.post(f"/sessions/{session_id}/players/{p_id}/rename", json={"name": "Player_New_Name"})
+    assert rename_resp.status_code == 200
+    assert rename_resp.json()["new_name"] == "Player_New_Name"
+    
+    # Verify in session players list
+    players_res = client.get(f"/sessions/{session_id}/players")
+    p_names = [p["name"] for p in players_res.json()]
+    assert "Player_New_Name" in p_names
+    assert "Player_Old_Name" not in p_names
+
+
+
+
+
+
 
 
 

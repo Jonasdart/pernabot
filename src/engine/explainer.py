@@ -37,16 +37,36 @@ def get_team_captains(playing_players: List[Player]):
 
     return c1, c2
 
+from src.config import (
+    BALANCE_RULE_ENABLED, 
+    BALANCE_CATEGORY_EMOJI,
+    GOALKEEPER_EMOJI,
+    GOALKEEPER_LABEL
+)
+
+def format_player_name(p: Player, include_gk: bool = True) -> str:
+    markers = []
+    if include_gk and getattr(p, 'is_goalkeeper', False):
+        markers.append(GOALKEEPER_EMOJI)
+    if BALANCE_RULE_ENABLED and getattr(p, 'is_special_category', False):
+        markers.append(BALANCE_CATEGORY_EMOJI)
+    marker_str = f" {' '.join(markers)}" if markers else ""
+    return f"{p.name}{marker_str}"
+
 def generate_teams_explanation(players: List[Player], title: str = "🎲 *Times Formados!*\n\n") -> str:
     playing = [p for p in players if p.is_playing]
     
     time_1 = [p for p in playing if p.team_slot == 1]
     time_2 = [p for p in playing if p.team_slot == 2]
     
-    ordered_t1 = sort_leaving_players(time_1)
+    gk_1 = next((p for p in time_1 if getattr(p, "is_goalkeeper", False)), None)
+    field_1 = [p for p in time_1 if not getattr(p, "is_goalkeeper", False)]
+    ordered_t1 = sort_leaving_players(field_1)
     ordered_t1.reverse()
 
-    ordered_t2 = sort_leaving_players(time_2)
+    gk_2 = next((p for p in time_2 if getattr(p, "is_goalkeeper", False)), None)
+    field_2 = [p for p in time_2 if not getattr(p, "is_goalkeeper", False)]
+    ordered_t2 = sort_leaving_players(field_2)
     ordered_t2.reverse()
 
     c1, c2 = get_team_captains(playing)
@@ -62,18 +82,31 @@ def generate_teams_explanation(players: List[Player], title: str = "🎲 *Times 
 
     if time_1:
         text += f"⚽ *{t1_label}:*\n"
+        if gk_1:
+            text += f"{GOALKEEPER_EMOJI} *{GOALKEEPER_LABEL}:* {format_player_name(gk_1, include_gk=False)}\n"
         for idx, p in enumerate(ordered_t1, 1):
-            text += f"{idx}. {p.name}\n"
+            text += f"{idx}. {format_player_name(p)}\n"
             
     if time_2:
         text += f"\n⚽ *{t2_label}:*\n"
+        if gk_2:
+            text += f"{GOALKEEPER_EMOJI} *{GOALKEEPER_LABEL}:* {format_player_name(gk_2, include_gk=False)}\n"
         for idx, p in enumerate(ordered_t2, 1):
-            text += f"{idx}. {p.name}\n"
+            text += f"{idx}. {format_player_name(p)}\n"
             
     text += "\n"
             
     waiting = [p for p in players if not p.is_playing]
-    sorted_waiting = sort_entering_players(waiting)
+    gk_waiting = [p for p in waiting if getattr(p, "is_goalkeeper", False)]
+    field_waiting = [p for p in waiting if not getattr(p, "is_goalkeeper", False)]
+    
+    sorted_waiting = sort_entering_players(field_waiting)
+    sorted_gk = sort_entering_players(gk_waiting)
+    
+    if sorted_gk:
+        text += f"\n{GOALKEEPER_EMOJI} *Fila de Goleiros:*\n"
+        for idx, p in enumerate(sorted_gk, 1):
+            text += f"{idx}. {format_player_name(p, include_gk=False)}\n"
     
     if sorted_waiting:
         team_idx = 1
@@ -85,7 +118,7 @@ def generate_teams_explanation(players: List[Player], title: str = "🎲 *Times 
             else:
                 text += f"\n⏳ *Próxima {team_idx}:*\n"
             for p in sorted_waiting[idx:idx+PLAYERS_PER_TEAM]:
-                text += f"{global_idx}. {p.name}\n"
+                text += f"{global_idx}. {format_player_name(p)}\n"
                 global_idx += 1
             idx += PLAYERS_PER_TEAM
             team_idx += 1
@@ -94,7 +127,7 @@ def generate_teams_explanation(players: List[Player], title: str = "🎲 *Times 
         if avulsos:
             text += "\n🧍 *Avulsos (Aguardando):*\n"
             for p in avulsos:
-                text += f"{global_idx}. {p.name}\n"
+                text += f"{global_idx}. {format_player_name(p)}\n"
                 global_idx += 1
                 
     return text
@@ -107,22 +140,31 @@ def generate_queue_explanation(players: List[Player]) -> str:
     waiting = [p for p in players if not p.is_playing]
     playing = [p for p in players if p.is_playing]
     
-    sorted_waiting = sort_entering_players(waiting)
+    field_waiting = [p for p in waiting if not getattr(p, "is_goalkeeper", False)]
+    gk_waiting = [p for p in waiting if getattr(p, "is_goalkeeper", False)]
+    
+    sorted_waiting = sort_entering_players(field_waiting)
+    sorted_gk = sort_entering_players(gk_waiting)
     sorted_playing = sort_leaving_players(playing)
     
-    text = "📋 *Fila de Espera (Próximos a Entrar)*\n"
+    text = "📋 *Fila de Espera (Linha)*\n"
     if not sorted_waiting:
-        text += "Ninguém aguardando.\n"
+        text += "Nenhum jogador de linha aguardando.\n"
     else:
         for idx, p in enumerate(sorted_waiting, 1):
-            text += f"{idx}. {p.name} (Espera: {p.cycles_waiting} | Partidas: {p.matches_played} | Chegada: {p.arrival_order})\n"
+            text += f"{idx}. {format_player_name(p)} (Espera: {p.cycles_waiting} | Partidas: {p.matches_played} | Chegada: {p.arrival_order})\n"
+            
+    if sorted_gk:
+        text += f"\n{GOALKEEPER_EMOJI} *Fila de Goleiros*\n"
+        for idx, p in enumerate(sorted_gk, 1):
+            text += f"{idx}. {format_player_name(p, include_gk=False)} (Espera: {p.cycles_waiting} | Partidas: {p.matches_played} | Chegada: {p.arrival_order})\n"
             
     text += "\n⚽ *Jogadores em Quadra (Próximos a Sair)*\n"
     if not sorted_playing:
         text += "Quadra vazia.\n"
     else:
         for idx, p in enumerate(sorted_playing, 1):
-            text += f"{idx}. {p.name} (Em Quadra: {p.cycles_in_court} | Partidas: {p.matches_played} | Sorteio: {p.draw_weight:.2f})\n"
+            text += f"{idx}. {format_player_name(p)} (Em Quadra: {p.cycles_in_court} | Partidas: {p.matches_played} | Sorteio: {p.draw_weight:.2f})\n"
             
     text += "\n_Lógica de entrada: Mais tempo esperando > Menos partidas > Sorteio Inicial > Chegada_\n"
     text += "_Lógica de saída: Mais tempo em quadra > Mais partidas jogadas > Sorteio inicial_"

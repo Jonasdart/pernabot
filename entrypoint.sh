@@ -4,6 +4,10 @@ set -e
 # Ensure data directory exists for SQLite persistence
 mkdir -p /app/data
 
+# Run database migrations
+echo "🔄 Executando migrações de banco de dados..."
+python migrate.py || true
+
 # Start FastAPI API & Frontend Server in the background
 echo "⚽ Iniciando Servidor Web (FastAPI + Frontend) na porta 8000..."
 uvicorn src.api.main:app --host 0.0.0.0 --port 8000 &

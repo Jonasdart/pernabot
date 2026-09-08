@@ -19,9 +19,8 @@ def get_dynamic_keyboard(db: DbSession, chat_id: int) -> InlineKeyboardMarkup:
     
     if not is_playing:
         keyboard = [
-            [InlineKeyboardButton("🎲 Sortear", callback_data="cmd_sortear")],
-            [InlineKeyboardButton("🔗 Link da Pelada", callback_data="cmd_link")],
-            [InlineKeyboardButton("🔄 Recomeçar Pelada", callback_data="cmd_recomecar")],
+            [InlineKeyboardButton("🎲 Sortear", callback_data="cmd_sortear"), InlineKeyboardButton("📋 Lista / Pagos", callback_data="cmd_lista")],
+            [InlineKeyboardButton("🔗 Link da Pelada", callback_data="cmd_link"), InlineKeyboardButton("🔄 Recomeçar Pelada", callback_data="cmd_recomecar")],
             [InlineKeyboardButton("🛑 Encerrar Pelada", callback_data="cmd_nova_pelada")]
         ]
     else:
@@ -37,8 +36,8 @@ def get_dynamic_keyboard(db: DbSession, chat_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(f"🏆 {t2_captain} Ganhou", callback_data="cmd_venceu_t2")
             ],
             [InlineKeyboardButton("🤝 Empate", callback_data="cmd_empate"), InlineKeyboardButton("📋 Ver Fila", callback_data="cmd_fila")],
-            [InlineKeyboardButton("🔄 Recomeçar Pelada", callback_data="cmd_recomecar"), InlineKeyboardButton("🔗 Link da Pelada", callback_data="cmd_link")],
-            [InlineKeyboardButton("🛑 Encerrar Pelada", callback_data="cmd_nova_pelada")]
+            [InlineKeyboardButton("💳 Lista / Pagos", callback_data="cmd_lista"), InlineKeyboardButton("🔗 Links", callback_data="cmd_link")],
+            [InlineKeyboardButton("🔄 Recomeçar Pelada", callback_data="cmd_recomecar"), InlineKeyboardButton("🛑 Encerrar", callback_data="cmd_nova_pelada")]
         ]
         
     return InlineKeyboardMarkup(keyboard)

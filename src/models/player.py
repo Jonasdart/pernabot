@@ -27,5 +27,12 @@ class Player(Base):
     draw_weight = Column(Float, default=0.0)
     initial_draw_order = Column(Integer, default=9999)
     team_slot = Column(Integer, default=0)
+    category = Column(String, default="default", index=True)
+    is_goalkeeper = Column(Boolean, default=False, index=True)
 
     session = relationship("Session", back_populates="players")
+
+    @property
+    def is_special_category(self) -> bool:
+        from src.config import BALANCE_CATEGORY_KEY
+        return (self.category or "").lower() == BALANCE_CATEGORY_KEY.lower()

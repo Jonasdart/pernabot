@@ -6,13 +6,38 @@ from src.services.session_service import get_active_session
 from src.services.player_service import (
     confirm_presence, cancel_presence, register_arrival, 
     get_confirmed_players, leave_presence, set_paying_status, 
-    get_player, get_all_active_players, get_paying_players
+    get_player, get_all_active_players, get_paying_players,
+    parse_whatsapp_presence_list, import_whatsapp_presence_list
 )
 from src.engine.match import pull_next_player
 from src.engine.explainer import generate_teams_explanation
 from src.bot.keyboards import get_dynamic_keyboard
+import os
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Check if this is a WhatsApp presence list pasted in chat
+    raw_text = update.message.text.strip()
+    chat_id = update.effective_chat.id
+    whatsapp_names = parse_whatsapp_presence_list(raw_text)
+    if len(whatsapp_names) >= 2:
+        db = SessionLocal()
+        try:
+            session = get_active_session(db, chat_id)
+            if session:
+                imported = import_whatsapp_presence_list(db, session.id, raw_text)
+                reply = f"📋 *Lista do WhatsApp importada com sucesso!*\n"
+                reply += f"✅ *{len(imported)} jogadores confirmados na pelada:*\n\n"
+                for idx, p in enumerate(imported, 1):
+                    reply += f"{idx}. {p.name}\n"
+                
+                checkin_code = getattr(session, "checkin_code", None) or session.public_hash
+                base_url = os.getenv("BASE_URL", "http://localhost:8686")
+                reply += f"\n📍 *Check-in da Quadra:* {base_url}/#/checkin/{checkin_code}"
+                await update.message.reply_text(reply, parse_mode="Markdown", reply_markup=get_dynamic_keyboard(db, chat_id))
+                return
+        finally:
+            db.close()
+
     # If the user mentioned the bot, strip the bot's username from the beginning
     bot_username = context.bot.username.lower()
     text = update.message.text.strip().lower()
@@ -20,7 +45,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Remove @botname from the start of the message if present
     text = re.sub(rf'^@{bot_username}\s+', '', text)
     
-    chat_id = update.effective_chat.id
     user = update.effective_user
     
     is_confirm = re.match(r'^(eu vou|vou|\+|👍)$', text)
@@ -107,16 +131,20 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for name in target_names:
                 confirm_presence(db, session.id, name=name, telegram_id=target_telegram_id, telegram_username=target_username)
             
+            from src.config import BALANCE_RULE_ENABLED, BALANCE_CATEGORY_EMOJI, GOALKEEPER_EMOJI
             confirmed = get_confirmed_players(db, session.id)
             names_str = ", ".join(target_names)
             list_text = f"✅ Presença confirmada para {names_str}!\n\n📋 *Confirmados ({len(confirmed)}):*\n"
             for idx, p in enumerate(confirmed, 1):
                 icon = "✅ " if p.is_paying else ""
-                list_text += f"{idx}. {icon}{p.name}\n"
+                gk_tag = f" {GOALKEEPER_EMOJI}" if getattr(p, 'is_goalkeeper', False) else ""
+                youth_tag = f" {BALANCE_CATEGORY_EMOJI}" if (BALANCE_RULE_ENABLED and getattr(p, 'is_special_category', False)) else ""
+                list_text += f"{idx}. {icon}{p.name}{gk_tag}{youth_tag}\n"
                 
             await update.message.reply_text(list_text, reply_markup=keyboard, parse_mode="Markdown")
             
         elif is_cancel or mention_cancel_1:
+            from src.config import BALANCE_RULE_ENABLED, BALANCE_CATEGORY_EMOJI, GOALKEEPER_EMOJI
             success_names = []
             failed_names = []
             for name in target_names:
@@ -132,7 +160,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 list_text = f"❌ Presença cancelada para {names_str}.\n\n📋 *Confirmados ({len(confirmed)}):*\n"
                 for idx, p in enumerate(confirmed, 1):
                     icon = "✅ " if p.is_paying else ""
-                    list_text += f"{idx}. {icon}{p.name}\n"
+                    gk_tag = f" {GOALKEEPER_EMOJI}" if getattr(p, 'is_goalkeeper', False) else ""
+                    youth_tag = f" {BALANCE_CATEGORY_EMOJI}" if (BALANCE_RULE_ENABLED and getattr(p, 'is_special_category', False)) else ""
+                    list_text += f"{idx}. {icon}{p.name}{gk_tag}{youth_tag}\n"
                 await update.message.reply_text(list_text, reply_markup=keyboard, parse_mode="Markdown")
             if failed_names:
                 names_str = ", ".join(failed_names)

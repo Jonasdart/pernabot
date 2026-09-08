@@ -12,5 +12,6 @@ class Session(Base):
     is_active = Column(Boolean, default=True)
     public_hash = Column(String, unique=True, index=True, nullable=True)
     admin_token = Column(String, unique=True, index=True, nullable=True)
+    checkin_code = Column(String, index=True, nullable=True)
 
     players = relationship("Player", back_populates="session", cascade="all, delete-orphan")
