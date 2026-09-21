@@ -158,6 +158,8 @@ let matchIsPlaying = false;
 let bannerDismissTimeout = null;
 let lastSeenRotationEventTime = null;
 let currentEnteringPlayerIds = new Set();
+let currentMatchData = null;
+let highlightDismissTimeout = null;
 
 // Sort State
 let sortField = 'pts';
@@ -467,13 +469,13 @@ function renderSessions() {
 async function loadSessionDetails(sessionId, date) {
     activeSessionId = sessionId;
     activeSessionDate = date;
-    
+
     // Find checkin code from currentSessions if available
     const sess = currentSessions.find(s => s.id === sessionId);
     if (sess) {
         activeSessionCheckinCode = sess.checkin_code || sess.public_hash;
     }
-    
+
     showView('players');
 
     const loadingHtml = `<tr><td colspan="6" style="text-align:center;"><div class="loader"></div></td></tr>`;
@@ -595,7 +597,7 @@ function renderStatsTable(players) {
         const isSelected = selectedPlayerIds.has(player.id);
         if (isSelected) el.classList.add('selected-row');
 
-        const catPill = player.is_special_category 
+        const catPill = player.is_special_category
             ? `<span class="player-category-pill" title="Categoria: ${currentBalanceConfig.label}">${currentBalanceConfig.emoji}</span>`
             : '';
 
@@ -634,7 +636,7 @@ function renderStatsTable(players) {
 // Tab 2: Presence List Table
 function renderPresenceTable(players) {
     presenceList.innerHTML = '';
-    
+
     // Sort players: Arrived first, then Confirmed, then others
     const sortedPlayers = [...players].sort((a, b) => {
         if (a.has_arrived !== b.has_arrived) return a.has_arrived ? -1 : 1;
@@ -1187,8 +1189,8 @@ async function handleSetPresence(playerId, isConfirmed) {
     try {
         if (activeSessionId) {
             const adminKey = getAdminKey();
-            const url = adminKey 
-                ? `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/presenca?key=${encodeURIComponent(adminKey)}` 
+            const url = adminKey
+                ? `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/presenca?key=${encodeURIComponent(adminKey)}`
                 : `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/presenca`;
             const res = await fetch(url, {
                 method: 'POST',
@@ -1234,8 +1236,8 @@ async function executeRenamePlayer(playerId, newName) {
     try {
         if (activeSessionId) {
             const adminKey = getAdminKey();
-            const url = adminKey 
-                ? `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/rename?key=${encodeURIComponent(adminKey)}` 
+            const url = adminKey
+                ? `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/rename?key=${encodeURIComponent(adminKey)}`
                 : `${API_BASE}/sessions/${activeSessionId}/players/${playerId}/rename`;
             const res = await fetch(url, {
                 method: 'POST',
@@ -1272,22 +1274,51 @@ async function executeRenamePlayer(playerId, newName) {
 // Rotation Feedback & Banner Animations
 // ==========================================
 
+function clearEnteringHighlights() {
+    if (highlightDismissTimeout) {
+        clearTimeout(highlightDismissTimeout);
+        highlightDismissTimeout = null;
+    }
+    if (currentEnteringPlayerIds && currentEnteringPlayerIds.size > 0) {
+        currentEnteringPlayerIds.clear();
+        if (currentMatchData && currentMatchData.teams) {
+            renderTeamPlayers(team1PlayersEl, currentMatchData.teams.team_1.players, currentMatchData.is_admin);
+            renderTeamPlayers(team2PlayersEl, currentMatchData.teams.team_2.players, currentMatchData.is_admin);
+            renderGoalkeeper(team1GkEl, currentMatchData.teams.team_1.goalkeeper, currentMatchData.is_admin);
+            renderGoalkeeper(team2GkEl, currentMatchData.teams.team_2.goalkeeper, currentMatchData.is_admin);
+        }
+    }
+}
+
 function showRotationFeedback(winner, winnerLabel, enteringPlayers = []) {
     if (!matchResultNotification) return;
 
     if (bannerDismissTimeout) clearTimeout(bannerDismissTimeout);
+    if (highlightDismissTimeout) clearTimeout(highlightDismissTimeout);
 
     // Track entering player IDs for highlighting pitch cards
-    if (enteringPlayers && enteringPlayers.length > 0) {
+    // In a draw where 2 whole teams enter (8+ players), do not blanket-highlight all players with generic neon!
+    if (winner === 0 && enteringPlayers && enteringPlayers.length >= 8) {
+        currentEnteringPlayerIds = new Set();
+    } else if (enteringPlayers && enteringPlayers.length > 0) {
         currentEnteringPlayerIds = new Set(enteringPlayers.map(p => p.id));
+    } else {
+        currentEnteringPlayerIds = new Set();
     }
+
+    // Auto-clear highlight after 5 seconds so players return to uniform clean styling
+    highlightDismissTimeout = setTimeout(clearEnteringHighlights, 5000);
 
     // Configure Banner Content based on result
     if (winner === 0) {
         matchResultNotification.classList.add('draw-result');
         if (resultBannerIcon) resultBannerIcon.textContent = '🤝';
         if (resultBannerTitle) resultBannerTitle.textContent = 'Empate na Partida!';
-        if (resultBannerSubtitle) resultBannerSubtitle.textContent = 'Rodada encerrada em empate e os times foram rodados!';
+        if (resultBannerSubtitle) {
+            resultBannerSubtitle.textContent = (enteringPlayers && enteringPlayers.length >= 8)
+                ? 'Dois novos times entraram em quadra após o empate!'
+                : 'Rodada encerrada em empate e os times foram rodados!';
+        }
     } else {
         matchResultNotification.classList.remove('draw-result');
         if (resultBannerIcon) resultBannerIcon.textContent = '🏆';
@@ -1336,6 +1367,7 @@ function hideRotationFeedback() {
     if (matchResultNotification) {
         matchResultNotification.classList.add('hidden');
     }
+    clearEnteringHighlights();
 }
 
 // ==========================================
@@ -1359,7 +1391,7 @@ function clearPlayerSelection() {
 function updateBatchUI() {
     const count = selectedPlayerIds.size;
     if (batchSelectedCount) batchSelectedCount.textContent = count;
-    
+
     if (count > 0 && batchActionBar) {
         batchActionBar.classList.remove('hidden');
     } else if (batchActionBar) {
@@ -1418,9 +1450,9 @@ async function executeBatchAction(action) {
 
     const ids = Array.from(selectedPlayerIds);
     const actionLabel = action === 'pay' ? 'confirmar pagamento de' :
-                        action === 'unpay' ? 'desmarcar pagamento de' :
-                        action === 'checkin' ? 'fazer check-in / liberar' :
-                        action === 'checkout' ? 'fazer checkout de' : 'processar';
+        action === 'unpay' ? 'desmarcar pagamento de' :
+            action === 'checkin' ? 'fazer check-in / liberar' :
+                action === 'checkout' ? 'fazer checkout de' : 'processar';
 
     if (!confirm(`Deseja realmente ${actionLabel} ${ids.length} jogador(es) selecionado(s)?`)) {
         return;
@@ -1478,7 +1510,7 @@ function setupBatchListeners() {
         batchBtnRemove.addEventListener('click', async () => {
             const count = selectedPlayerIds.size;
             if (count === 0) return;
-            const confirmMsg = count === 1 
+            const confirmMsg = count === 1
                 ? `Deseja realmente remover o jogador selecionado desta pelada?`
                 : `Deseja realmente remover os ${count} jogadores selecionados desta pelada?`;
             if (!confirm(confirmMsg)) return;
@@ -1755,6 +1787,7 @@ async function fetchMatchData(publicHash, adminToken) {
 }
 
 function renderMatchData(data, isManualAction = false) {
+    currentMatchData = data;
     if (data.balance_config) {
         updateBalanceConfig(data.balance_config);
     }
@@ -1861,7 +1894,7 @@ function startStopwatch() {
 function renderTeamPlayers(container, players, isAdmin) {
     container.innerHTML = '';
     if (!players || players.length === 0) {
-        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1rem;">Nenhum jogador</div>`;
+        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 0.8rem; font-size: 0.85rem;">Nenhum jogador</div>`;
         return;
     }
 
@@ -1880,8 +1913,8 @@ function renderTeamPlayers(container, players, isAdmin) {
         info.className = 'player-card-info';
         info.innerHTML = `
             <span class="player-card-name">
-                ${p.name}${catMarker} ${p.is_paying ? '💳' : ''}
-                ${isEntering ? '<span class="new-entrant-badge">🚀 Entrou</span>' : ''}
+                ${p.name}${catMarker}
+                ${isEntering ? '<span class="new-entrant-badge">Entrou</span>' : ''}
             </span>
             <span class="player-card-stats">${p.points} pts</span>
         `;
@@ -1893,15 +1926,15 @@ function renderTeamPlayers(container, players, isAdmin) {
             actions.className = 'player-card-actions';
 
             const btnDescer = document.createElement('button');
-            btnDescer.className = 'btn-action-sm descer';
+            btnDescer.className = 'btn-icon-sm descer';
             btnDescer.title = 'Descer para a reserva';
-            btnDescer.textContent = '🪑 Descer';
+            btnDescer.textContent = '🪑';
             btnDescer.addEventListener('click', () => handlePlayerAction('descer', p.id));
 
             const btnSair = document.createElement('button');
-            btnSair.className = 'btn-action-sm sair';
+            btnSair.className = 'btn-icon-sm sair';
             btnSair.title = 'Sair da pelada';
-            btnSair.textContent = '👋 Sair';
+            btnSair.textContent = '👋';
             btnSair.addEventListener('click', () => handlePlayerAction('sair', p.id));
 
             actions.appendChild(btnDescer);
@@ -1922,50 +1955,49 @@ function renderGoalkeeper(container, gk, isAdmin) {
     }
     container.classList.remove('hidden');
 
-    const card = document.createElement('div');
-    card.className = 'player-card goalkeeper-card';
+    const strip = document.createElement('div');
+    strip.className = 'goalkeeper-strip';
 
     const isEntering = currentEnteringPlayerIds.has(gk.id);
     if (isEntering) {
-        card.classList.add('entering-highlight');
+        strip.classList.add('entering-highlight');
     }
 
     const catMarker = gk.is_special_category ? ` <span title="${currentBalanceConfig.label}">${currentBalanceConfig.emoji}</span>` : '';
 
     const info = document.createElement('div');
-    info.className = 'player-card-info';
+    info.className = 'gk-strip-info';
     info.innerHTML = `
-        <span class="player-card-name">
-            <span class="gk-role-badge">🧤 GOL</span> ${gk.name}${catMarker} ${gk.is_paying ? '💳' : ''}
-            ${isEntering ? '<span class="new-entrant-badge">🚀 Entrou</span>' : ''}
-        </span>
-        <span class="player-card-stats">${gk.points} pts</span>
+        <span class="gk-badge">🧤 GOL</span>
+        <span class="gk-name">${gk.name}${catMarker}</span>
+        <span class="gk-pts">${gk.points} pts</span>
+        ${isEntering ? '<span class="new-entrant-badge">Entrou</span>' : ''}
     `;
 
-    card.appendChild(info);
+    strip.appendChild(info);
 
     if (isAdmin) {
         const actions = document.createElement('div');
-        actions.className = 'player-card-actions';
+        actions.className = 'gk-strip-actions';
 
         const btnDescer = document.createElement('button');
-        btnDescer.className = 'btn-action-sm descer';
+        btnDescer.className = 'btn-icon-sm descer';
         btnDescer.title = 'Descer para a reserva de goleiros';
-        btnDescer.textContent = '🪑 Descer';
+        btnDescer.textContent = '🪑';
         btnDescer.addEventListener('click', () => handlePlayerAction('descer', gk.id));
 
         const btnSair = document.createElement('button');
-        btnSair.className = 'btn-action-sm sair';
+        btnSair.className = 'btn-icon-sm sair';
         btnSair.title = 'Sair da pelada';
-        btnSair.textContent = '👋 Sair';
+        btnSair.textContent = '👋';
         btnSair.addEventListener('click', () => handlePlayerAction('sair', gk.id));
 
         actions.appendChild(btnDescer);
         actions.appendChild(btnSair);
-        card.appendChild(actions);
+        strip.appendChild(actions);
     }
 
-    container.appendChild(card);
+    container.appendChild(strip);
 }
 
 function renderGoalkeeperQueue(gkQueue, nextGk, isAdmin) {
@@ -1973,7 +2005,7 @@ function renderGoalkeeperQueue(gkQueue, nextGk, isAdmin) {
     const gkCountBadge = document.getElementById('gk-queue-count-badge');
     const nextGkContainer = document.getElementById('next-gk-container');
     const gkQueueListEl = document.getElementById('match-gk-queue-list');
-    
+
     if (!gkSection || !gkQueueListEl) return;
 
     const hasGkActivity = (gkQueue && gkQueue.length > 0) || nextGk;
@@ -1993,7 +2025,7 @@ function renderGoalkeeperQueue(gkQueue, nextGk, isAdmin) {
             nextGkContainer.innerHTML = `
                 <div class="next-gk-card">
                     <span class="num-badge">🧤 PRÓXIMO GOLEIRO</span>
-                    <h4>${nextGk.name} ${nextGk.is_paying ? '💳' : ''}</h4>
+                    <h4>${nextGk.name}</h4>
                     <p>${nextGk.cycles_waiting} rodada(s) esperando</p>
                 </div>
             `;
@@ -2001,6 +2033,24 @@ function renderGoalkeeperQueue(gkQueue, nextGk, isAdmin) {
         } else {
             nextGkContainer.innerHTML = '';
             nextGkContainer.classList.add('hidden');
+        }
+    }
+
+    const liveNextGkContainer = document.getElementById('live-next-gk-container');
+    if (liveNextGkContainer) {
+        if (nextGk) {
+            liveNextGkContainer.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 0.35rem; min-width: 0;">
+                    <span class="gk-badge">🧤 GOL</span>
+                    <strong style="color: var(--text-main); font-size: 0.82rem;">${nextGk.name}</strong>
+                    <span style="color: #fbbf24; font-size: 0.72rem; margin-left: 0.2rem;">(Próximo Goleiro)</span>
+                </div>
+                <span style="color: var(--text-muted); font-size: 0.72rem; flex-shrink: 0;">${nextGk.cycles_waiting} rodada(s) aguardando</span>
+            `;
+            liveNextGkContainer.classList.remove('hidden');
+        } else {
+            liveNextGkContainer.innerHTML = '';
+            liveNextGkContainer.classList.add('hidden');
         }
     }
 
@@ -2012,8 +2062,8 @@ function renderGoalkeeperQueue(gkQueue, nextGk, isAdmin) {
 
     gkQueue.forEach((p, index) => {
         const tr = document.createElement('tr');
-        const payBadge = p.is_paying 
-            ? `<span class="status-badge paid ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para desmarcar pagamento' : 'Status de pagamento'}">💳 Pago</span>` 
+        const payBadge = p.is_paying
+            ? `<span class="status-badge paid ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para desmarcar pagamento' : 'Status de pagamento'}">💳 Pago</span>`
             : `<span class="status-badge pending ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para marcar como pago' : 'Status de pagamento'}">❌ Pendente</span>`;
 
         tr.innerHTML = `
@@ -2057,40 +2107,77 @@ function renderGoalkeeperQueue(gkQueue, nextGk, isAdmin) {
 }
 
 function renderNextTeam(nextPlayers, isAdmin) {
-    nextTeamListEl.innerHTML = '';
-    if (!nextPlayers || nextPlayers.length === 0) {
-        nextTeamListEl.innerHTML = `<div style="text-align: center; color: var(--text-muted); grid-column: 1/-1; padding: 1rem;">Nenhum jogador aguardando na fila.</div>`;
-        nextTeamCountBadge.textContent = '0 Jogadores';
-        return;
-    }
-
-    nextTeamCountBadge.textContent = `${nextPlayers.length} Jogador(es)`;
+    const liveNextTeamListEl = document.getElementById('live-next-team-list');
+    const liveNextTeamCountBadge = document.getElementById('live-next-team-count-badge');
 
     const singular = currentBalanceConfig.label.endsWith('s') ? currentBalanceConfig.label.slice(0, -1) : currentBalanceConfig.label;
+    const countText = nextPlayers && nextPlayers.length > 0 ? `${nextPlayers.length} Jogador(es)` : '0 Jogadores';
 
-    nextPlayers.forEach((p, index) => {
-        const card = document.createElement('div');
-        card.className = 'next-player-card';
-        const catBadge = p.is_special_category 
-            ? `<span class="player-category-pill" style="margin-left: 0.2rem; font-size: 0.7rem;">${currentBalanceConfig.emoji} ${singular}</span>`
-            : '';
-        card.innerHTML = `
-            <span class="num-badge">PRÓXIMO #${index + 1}</span>
-            <h4>${p.name} ${catBadge} ${p.is_paying ? '💳' : ''}</h4>
-            <p>${p.cycles_waiting} rodada(s) esperando</p>
-            <div class="next-player-action" style="margin-top: 0.5rem;"></div>
-        `;
+    if (nextTeamCountBadge) nextTeamCountBadge.textContent = countText;
+    if (liveNextTeamCountBadge) liveNextTeamCountBadge.textContent = countText;
 
-        if (isAdmin) {
-            const checkoutBtn = document.createElement('button');
-            checkoutBtn.className = 'btn-action-sm checkout';
-            checkoutBtn.textContent = '👋 Saiu';
-            checkoutBtn.onclick = () => handleCheckoutPlayer(p);
-            card.querySelector('.next-player-action').appendChild(checkoutBtn);
+    // 1. Render in Live Next Team Card (Directly on match view)
+    if (liveNextTeamListEl) {
+        liveNextTeamListEl.innerHTML = '';
+        if (!nextPlayers || nextPlayers.length === 0) {
+            liveNextTeamListEl.innerHTML = `<div style="text-align: center; color: var(--text-muted); grid-column: 1/-1; padding: 0.6rem; font-size: 0.82rem;">Nenhum jogador aguardando na fila.</div>`;
+        } else {
+            nextPlayers.forEach((p, index) => {
+                const chip = document.createElement('div');
+                chip.className = 'live-next-player-chip';
+                const catBadge = p.is_special_category
+                    ? `<span title="${currentBalanceConfig.label}">${currentBalanceConfig.emoji}</span>`
+                    : '';
+                chip.innerHTML = `
+                    <div class="player-info">
+                        <span class="order-num">#${index + 1}</span>
+                        <span class="player-name">${p.name} ${catBadge}</span>
+                    </div>
+                `;
+                if (isAdmin) {
+                    const btnOut = document.createElement('button');
+                    btnOut.className = 'btn-icon-sm sair';
+                    btnOut.title = 'Marcar como saiu';
+                    btnOut.textContent = '👋';
+                    btnOut.onclick = () => handleCheckoutPlayer(p);
+                    chip.appendChild(btnOut);
+                }
+                liveNextTeamListEl.appendChild(chip);
+            });
         }
+    }
 
-        nextTeamListEl.appendChild(card);
-    });
+    // 2. Render in Queue Modal
+    if (nextTeamListEl) {
+        nextTeamListEl.innerHTML = '';
+        if (!nextPlayers || nextPlayers.length === 0) {
+            nextTeamListEl.innerHTML = `<div style="text-align: center; color: var(--text-muted); grid-column: 1/-1; padding: 1rem;">Nenhum jogador aguardando na fila.</div>`;
+        } else {
+            nextPlayers.forEach((p, index) => {
+                const card = document.createElement('div');
+                card.className = 'next-player-card';
+                const catBadge = p.is_special_category
+                    ? `<span class="player-category-pill" style="margin-left: 0.2rem; font-size: 0.7rem;">${currentBalanceConfig.emoji} ${singular}</span>`
+                    : '';
+                card.innerHTML = `
+                    <span class="num-badge">PRÓXIMO #${index + 1}</span>
+                    <h4>${p.name} ${catBadge} ${p.is_paying ? '💳' : ''}</h4>
+                    <p>${p.cycles_waiting} rodada(s) esperando</p>
+                    <div class="next-player-action" style="margin-top: 0.5rem;"></div>
+                `;
+
+                if (isAdmin) {
+                    const checkoutBtn = document.createElement('button');
+                    checkoutBtn.className = 'btn-action-sm checkout';
+                    checkoutBtn.textContent = '👋 Saiu';
+                    checkoutBtn.onclick = () => handleCheckoutPlayer(p);
+                    card.querySelector('.next-player-action').appendChild(checkoutBtn);
+                }
+
+                nextTeamListEl.appendChild(card);
+            });
+        }
+    }
 }
 
 function renderPendingCheckinList(allPlayers, isAdmin) {
@@ -2156,19 +2243,19 @@ function renderMatchQueue(queuePlayers, isAdmin) {
 
     queuePlayers.forEach((p, index) => {
         const tr = document.createElement('tr');
-        const payBadge = p.is_paying 
-            ? `<span class="status-badge paid ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para desmarcar pagamento' : 'Status de pagamento'}">💳 Pago</span>` 
+        const payBadge = p.is_paying
+            ? `<span class="status-badge paid ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para desmarcar pagamento' : 'Status de pagamento'}">💳 Pago</span>`
             : `<span class="status-badge pending ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.75rem;" title="${isAdmin ? 'Clique para marcar como pago' : 'Status de pagamento'}">❌ Pendente</span>`;
 
         const gkBadge = p.is_goalkeeper
             ? `<span class="status-badge goalkeeper ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.72rem;" title="${isAdmin ? 'Clique para alternar para Linha' : 'Goleiro'}">🧤 Gol</span>`
             : (isAdmin ? `<span class="status-badge goalkeeper default clickable-badge" style="font-size:0.72rem;" title="Clique para definir como Goleiro">⚽ Linha</span>` : '');
 
-        const catBadge = p.is_special_category 
+        const catBadge = p.is_special_category
             ? `<span class="status-badge category ${isAdmin ? 'clickable-badge' : ''}" style="font-size:0.72rem;" title="${isAdmin ? 'Clique para alternar categoria' : currentBalanceConfig.label}">${currentBalanceConfig.emoji} ${singular}</span>`
             : (isAdmin ? `<span class="status-badge category default clickable-badge" style="font-size:0.72rem;" title="Clique para marcar como ${currentBalanceConfig.label}">👤 Normal</span>` : '');
 
-        const quotaBadge = p.is_skipped_by_quota 
+        const quotaBadge = p.is_skipped_by_quota
             ? `<span class="status-badge skipped-quota" title="Aguardando próxima vaga para manter limite de 1 por time">⏳ Aguarda vaga</span>`
             : '';
 
@@ -2255,6 +2342,9 @@ async function handlePlayerAction(action, playerId) {
 
     const actionText = action === 'descer' ? 'descer este jogador para a reserva' : 'remover este jogador da pelada';
     if (!confirm(`Tem certeza que deseja ${actionText}?`)) return;
+
+    // Clear entering highlights so the new replacement player and existing teammates have matching uniform styling
+    clearEnteringHighlights();
 
     try {
         const response = await fetch(`${API_BASE}/sessions/hash/${currentPublicHash}/${action}?token=${encodeURIComponent(currentAdminToken)}`, {
@@ -2375,9 +2465,11 @@ function handleCopyPaidList() {
     }
 
     const youthEmoji = (currentBalanceConfig && currentBalanceConfig.emoji) || '🧒';
+    const sortAlpha = (arr) => arr.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }));
+
     const relevant = currentPlayers;
-    const paid = relevant.filter(p => p.is_paying);
-    const pending = relevant.filter(p => !p.is_paying);
+    const paid = sortAlpha(relevant.filter(p => p.is_paying));
+    const pending = sortAlpha(relevant.filter(p => !p.is_paying));
     const percent = relevant.length > 0 ? Math.round((paid.length / relevant.length) * 100) : 0;
 
     const dateStr = activeSessionDate ? new Date(activeSessionDate).toLocaleDateString('pt-BR') : 'Hoje';
@@ -2427,18 +2519,19 @@ function handleCopyPresenceList() {
     }
 
     const youthEmoji = (currentBalanceConfig && currentBalanceConfig.emoji) || '🧒';
+    const sortAlpha = (arr) => arr.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }));
 
     // 1. Goleiros confirmados
-    const confirmedGks = currentPlayers.filter(p => (p.is_confirmed || p.has_arrived) && p.is_goalkeeper);
+    const confirmedGks = sortAlpha(currentPlayers.filter(p => (p.is_confirmed || p.has_arrived) && p.is_goalkeeper));
 
     // 2. Linha confirmada (Pagos)
-    const confirmedPaid = currentPlayers.filter(p => (p.is_confirmed || p.has_arrived) && !p.is_goalkeeper && p.is_paying);
+    const confirmedPaid = sortAlpha(currentPlayers.filter(p => (p.is_confirmed || p.has_arrived) && !p.is_goalkeeper && p.is_paying));
 
     // 3. Linha confirmada (Pendente)
-    const confirmedPending = currentPlayers.filter(p => (p.is_confirmed || p.has_arrived) && !p.is_goalkeeper && !p.is_paying);
+    const confirmedPending = sortAlpha(currentPlayers.filter(p => (p.is_confirmed || p.has_arrived) && !p.is_goalkeeper && !p.is_paying));
 
     // 4. Pagos que não irão
-    const absentPaid = currentPlayers.filter(p => (!p.is_confirmed && !p.has_arrived) && p.is_paying);
+    const absentPaid = sortAlpha(currentPlayers.filter(p => (!p.is_confirmed && !p.has_arrived) && p.is_paying));
 
     const dateStr = activeSessionDate ? new Date(activeSessionDate).toLocaleDateString('pt-BR') : 'Hoje';
     const checkinUrl = activeSessionCheckinCode ? `${window.location.origin}/#/checkin/${activeSessionCheckinCode}` : `${window.location.origin}`;
@@ -2446,54 +2539,46 @@ function handleCopyPresenceList() {
     let text = `⚽ *Lista de Presença - Pelada ${dateStr}*\n\n`;
 
     // Seção separada de Goleiros
-    text += `🧤 *Goleiros* (${confirmedGks.length})\n`;
     if (confirmedGks.length > 0) {
+        text += `🧤 *Goleiros* (${confirmedGks.length})\n`;
         confirmedGks.forEach((p, idx) => {
             const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
             const payTag = p.is_paying ? ' (Pago)' : ' (Pendente)';
             text += `${idx + 1} - ${p.name}${youthTag}${payTag}\n`;
         });
-    } else {
-        text += `_Nenhum_\n`;
+        text += `\n`;
     }
-    text += `\n`;
 
     // Presença confirmada (Linha - Pagos)
-    text += `🟢 *Presença confirmada (Linha - Pagos)* (${confirmedPaid.length})\n`;
     if (confirmedPaid.length > 0) {
+        text += `🟢 *Presença confirmada (Linha - Pagos)* (${confirmedPaid.length})\n`;
         confirmedPaid.forEach((p, idx) => {
             const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
             text += `${idx + 1} - ${p.name}${youthTag}\n`;
         });
-    } else {
-        text += `_Nenhum_\n`;
+        text += `\n`;
     }
-    text += `\n`;
 
     // Presença confirmada (Linha - Pendente)
-    text += `⏳ *Presença confirmada (Linha - Pendente)* (${confirmedPending.length})\n`;
     if (confirmedPending.length > 0) {
+        text += `⏳ *Presença confirmada (Linha - Pendente)* (${confirmedPending.length})\n`;
         confirmedPending.forEach((p, idx) => {
             const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
             text += `${idx + 1} - ${p.name}${youthTag}\n`;
         });
-    } else {
-        text += `_Nenhum_\n`;
+        text += `\n`;
     }
-    text += `\n`;
 
     // Pagos que não irão
-    text += `🏖️ *Pagos que não irão* (${absentPaid.length})\n`;
     if (absentPaid.length > 0) {
+        text += `🏖️ *Pagos que não irão* (${absentPaid.length})\n`;
         absentPaid.forEach((p, idx) => {
             const gkTag = p.is_goalkeeper ? ' 🧤' : '';
             const youthTag = p.is_special_category ? ` ${youthEmoji}` : '';
             text += `${idx + 1} - ${p.name}${gkTag}${youthTag}\n`;
         });
-    } else {
-        text += `_Nenhum_\n`;
+        text += `\n`;
     }
-    text += `\n`;
 
     text += `📍 *Fazer Check-in:* ${checkinUrl}`;
 
@@ -2661,7 +2746,7 @@ function renderCheckinViewData(data) {
                 chip.type = 'button';
                 chip.className = `quick-name-chip ${p.has_arrived ? 'arrived' : ''}`;
                 chip.innerHTML = `${p.has_arrived ? '✅' : '⚪'} ${p.name} ${p.is_paying ? '<span style="font-size:0.75rem;">💳</span>' : ''}`;
-                
+
                 if (!p.has_arrived) {
                     chip.addEventListener('click', () => {
                         document.querySelectorAll('.quick-name-chip').forEach(c => c.classList.remove('selected'));
@@ -2885,7 +2970,7 @@ function parseWhatsappTextJS(rawText) {
     const lines = rawText.split('\n');
     const names = [];
     const ignoreKeywords = [
-        "ranca", "pelada", "futebol", "coletes", "cores", "convidado", 
+        "ranca", "pelada", "futebol", "coletes", "cores", "convidado",
         "jogadores", "horário", "horario", "local", "quadra", "regras", "pix"
     ];
 

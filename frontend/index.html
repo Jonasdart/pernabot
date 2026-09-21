@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pernabot Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=5.2">
+    <link rel="stylesheet" href="/static/style.css?v=6.0">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
 </head>
 
@@ -314,6 +314,23 @@
                     </div>
                 </div>
 
+                <!-- Live Next Team Preview (Directly visible on match screen) -->
+                <div id="live-next-team-card" class="glass-card live-next-team-card">
+                    <div class="live-next-team-header">
+                        <div class="live-next-team-title-wrap">
+                            <span class="live-pulse-dot"></span>
+                            <h3>🔥 Próximo Time a Entrar</h3>
+                        </div>
+                        <span id="live-next-team-count-badge" class="badge active">0 Jogadores</span>
+                    </div>
+                    <div id="live-next-team-list" class="live-next-team-grid">
+                        <!-- Next team players injected here -->
+                    </div>
+                    <div id="live-next-gk-container" class="live-next-gk-strip hidden">
+                        <!-- Next goalkeeper injected here -->
+                    </div>
+                </div>
+
                 <!-- Floating Action Button for Queue -->
                 <button id="fab-queue-btn" class="fab-btn">
                     📋 Fila & Check-in (<span id="fab-queue-count">0</span>)
@@ -572,7 +589,7 @@
     <div id="toast" class="toast hidden"></div>
 
     <script src="/static/qrcode.min.js"></script>
-    <script src="/static/app.js?v=12"></script>
+    <script src="/static/app.js?v=14"></script>
 </body>
 
 </html>
