@@ -604,7 +604,7 @@ function renderSessions() {
         if (liveBtn) {
             liveBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                window.location.hash = `#/match/${session.public_hash}`;
+                openMatchInNewTab(session.public_hash, null);
             });
         }
 
@@ -612,7 +612,7 @@ function renderSessions() {
         if (adminBtn) {
             adminBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                window.location.hash = `#/match/${session.public_hash}?admin=${session.admin_token}`;
+                openMatchInNewTab(session.public_hash, session.admin_token);
             });
         }
 
@@ -1890,6 +1890,242 @@ function setupMatchViewListeners() {
     const addPlayerModal = document.getElementById('add-player-modal');
     const closeAddPlayerModalBtn = document.getElementById('close-add-player-modal-btn');
     const addPlayerForm = document.getElementById('add-player-form');
+    const tabBtnAddFromRoster = document.getElementById('tab-btn-add-from-roster');
+    const tabBtnAddNewPlayer = document.getElementById('tab-btn-add-new-player');
+    const addFromRosterPane = document.getElementById('add-from-roster-pane');
+    const addRosterSearchInput = document.getElementById('add-roster-search-input');
+    const addRosterMembersList = document.getElementById('add-roster-members-list');
+    const rosterAvailableCount = document.getElementById('roster-available-count');
+
+    let currentAvailableRoster = [];
+
+    function switchAddPlayerModalTab(tab) {
+        if (tab === 'roster') {
+            if (tabBtnAddFromRoster) tabBtnAddFromRoster.classList.add('active');
+            if (tabBtnAddNewPlayer) tabBtnAddNewPlayer.classList.remove('active');
+            if (addFromRosterPane) addFromRosterPane.classList.remove('hidden');
+            if (addPlayerForm) addPlayerForm.classList.add('hidden');
+        } else {
+            if (tabBtnAddNewPlayer) tabBtnAddNewPlayer.classList.add('active');
+            if (tabBtnAddFromRoster) tabBtnAddFromRoster.classList.remove('active');
+            if (addPlayerForm) addPlayerForm.classList.remove('hidden');
+            if (addFromRosterPane) addFromRosterPane.classList.add('hidden');
+            const nameInput = document.getElementById('player-name-input');
+            if (nameInput) setTimeout(() => nameInput.focus(), 60);
+        }
+    }
+
+    if (tabBtnAddFromRoster) {
+        tabBtnAddFromRoster.addEventListener('click', () => switchAddPlayerModalTab('roster'));
+    }
+    if (tabBtnAddNewPlayer) {
+        tabBtnAddNewPlayer.addEventListener('click', () => switchAddPlayerModalTab('new'));
+    }
+
+    function renderAvailableRosterList(members) {
+        if (!addRosterMembersList) return;
+        addRosterMembersList.innerHTML = '';
+
+        const query = (addRosterSearchInput && addRosterSearchInput.value ? addRosterSearchInput.value : '').toLowerCase().trim();
+        const filtered = query ? members.filter(m => m.name.toLowerCase().includes(query)) : members;
+
+        if (rosterAvailableCount) {
+            rosterAvailableCount.textContent = members.length;
+        }
+
+        if (filtered.length === 0) {
+            addRosterMembersList.innerHTML = `
+                <div style="text-align: center; color: var(--text-muted); padding: 2rem 1rem; font-size: 0.88rem; line-height: 1.5;">
+                    ${query ? '🔍 Nenhum membro encontrado para a busca.' : '✅ Todos os membros do elenco já estão cadastrados nesta pelada!'}
+                    ${!query ? '<br><button type="button" class="btn secondary sm" id="btn-goto-new-player" style="margin-top: 0.8rem;">➕ Cadastrar Novo Jogador</button>' : ''}
+                </div>
+            `;
+            const gotoNewBtn = document.getElementById('btn-goto-new-player');
+            if (gotoNewBtn) {
+                gotoNewBtn.addEventListener('click', () => switchAddPlayerModalTab('new'));
+            }
+            return;
+        }
+
+        filtered.forEach(m => {
+            const item = document.createElement('div');
+            item.className = 'roster-pick-item';
+            item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; gap: 0.8rem;';
+
+            const isMensalista = m.member_type === 'mensalista';
+            const isPaid = m.payment_status === 'paid';
+            const isGk = Boolean(m.is_goalkeeper);
+
+            item.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; flex: 1;">
+                    <div style="font-weight: 600; font-size: 0.95rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${m.name}</div>
+                    <div style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; font-size: 0.75rem;">
+                        <span class="badge" style="background: ${isMensalista ? 'rgba(56, 189, 248, 0.2)' : 'rgba(148, 163, 184, 0.2)'}; color: ${isMensalista ? '#38bdf8' : '#94a3b8'};">${isMensalista ? '⭐ Mensalista' : '👤 Avulso'}</span>
+                        <span class="badge" style="background: ${isPaid ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}; color: ${isPaid ? '#10b981' : '#f87171'};">${isPaid ? '💳 Pago' : '⏳ Pendente'}</span>
+                        ${isGk ? '<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24;">🧤 Goleiro</span>' : ''}
+                        ${m.category && m.category !== 'default' ? `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">🏷️ ${m.category}</span>` : ''}
+                    </div>
+                </div>
+                <div class="roster-actions">
+                    <button type="button" class="btn secondary sm btn-add-presenca" title="Confirmar apenas presença na lista" style="padding: 0.32rem 0.55rem; font-size: 0.78rem; white-space: nowrap;">
+                        ➕ Presença
+                    </button>
+                    <button type="button" class="btn primary sm btn-add-checkin" title="Confirmar chegada e pagamento (Check-in)" style="padding: 0.32rem 0.55rem; font-size: 0.78rem; white-space: nowrap; background: linear-gradient(135deg, #10b981, #059669);">
+                        📍 Chegou
+                    </button>
+                    ${!isPaid ? `
+                    <button type="button" class="btn secondary sm btn-add-liberar" title="Liberar entrada na quadra sem pagamento" style="padding: 0.32rem 0.55rem; font-size: 0.78rem; white-space: nowrap; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8; background: rgba(56, 189, 248, 0.1);">
+                        🔓 Liberar
+                    </button>
+                    ` : ''}
+                </div>
+            `;
+
+            const btnPresenca = item.querySelector('.btn-add-presenca');
+            const btnCheckin = item.querySelector('.btn-add-checkin');
+            const btnLiberar = item.querySelector('.btn-add-liberar');
+
+            const attachHandler = (btn, action) => {
+                if (!btn) return;
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const actionContainer = item.querySelector('.roster-actions');
+                    if (actionContainer) {
+                        actionContainer.querySelectorAll('button').forEach(b => b.disabled = true);
+                    }
+                    btn.textContent = '...';
+                    await handleAddRosterMemberDirect(m, action);
+                });
+            };
+
+            attachHandler(btnPresenca, 'presenca');
+            attachHandler(btnCheckin, 'checkin');
+            attachHandler(btnLiberar, 'liberar');
+
+            addRosterMembersList.appendChild(item);
+        });
+    }
+
+    if (addRosterSearchInput) {
+        addRosterSearchInput.addEventListener('input', () => {
+            renderAvailableRosterList(currentAvailableRoster);
+        });
+    }
+
+    async function handleAddRosterMemberDirect(member, action = 'presenca') {
+        if (!activeSessionId) return;
+        const adminKey = getAdminKey();
+        try {
+            const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/players?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/players`;
+            const isPaid = member.payment_status === 'paid';
+
+            let doCheckin = false;
+            let doLiberar = false;
+            let isPaying = isPaid;
+
+            if (action === 'checkin') {
+                doCheckin = true;
+                doLiberar = false;
+                isPaying = true;
+            } else if (action === 'liberar') {
+                doCheckin = false;
+                doLiberar = true;
+                isPaying = false;
+            } else {
+                doCheckin = false;
+                doLiberar = false;
+                isPaying = isPaid;
+            }
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: member.name,
+                    is_paying: isPaying,
+                    is_goalkeeper: Boolean(member.is_goalkeeper),
+                    category: member.category || 'default',
+                    is_confirmed: true,
+                    do_checkin: doCheckin,
+                    do_liberar: doLiberar
+                })
+            });
+
+            if (res.ok) {
+                if (action === 'checkin') {
+                    showToast(`📍 Check-in de ${member.name} realizado!`);
+                } else if (action === 'liberar') {
+                    showToast(`🔓 ${member.name} liberado para a quadra!`);
+                } else {
+                    showToast(`⭐ ${member.name} adicionado à lista de presença!`);
+                }
+                currentAvailableRoster = currentAvailableRoster.filter(m => m.id !== member.id);
+                renderAvailableRosterList(currentAvailableRoster);
+                await loadSessionDetails(activeSessionId, activeSessionDate);
+            } else {
+                const err = await res.json();
+                alert(`Erro: ${err.detail || 'Falha ao adicionar jogador'}`);
+                renderAvailableRosterList(currentAvailableRoster);
+            }
+        } catch (e) {
+            console.error('Erro ao adicionar membro à sessão:', e);
+            alert('Erro de conexão ao adicionar jogador.');
+            renderAvailableRosterList(currentAvailableRoster);
+        }
+    }
+
+    async function loadAvailableRosterForModal() {
+        if (!activeSessionId) return;
+        const adminKey = getAdminKey();
+        if (addRosterMembersList) {
+            addRosterMembersList.innerHTML = `<div style="text-align: center; padding: 1.5rem;"><div class="loader"></div></div>`;
+        }
+        try {
+            const url = adminKey
+                ? `${API_BASE}/sessions/${activeSessionId}/available-members?key=${encodeURIComponent(adminKey)}`
+                : `${API_BASE}/sessions/${activeSessionId}/available-members`;
+            const res = await fetch(url);
+            if (res.ok) {
+                currentAvailableRoster = await res.json();
+                renderAvailableRosterList(currentAvailableRoster);
+                if (currentAvailableRoster.length === 0) {
+                    switchAddPlayerModalTab('new');
+                } else {
+                    switchAddPlayerModalTab('roster');
+                }
+            } else {
+                if (addRosterMembersList) addRosterMembersList.innerHTML = `<div style="color:#ef4444; text-align:center; padding:1rem;">Falha ao carregar elenco disponível.</div>`;
+                switchAddPlayerModalTab('new');
+            }
+        } catch (e) {
+            console.error('Erro ao buscar elenco disponível:', e);
+            switchAddPlayerModalTab('new');
+        }
+    }
+
+    const addDoCheckinCb = document.getElementById('add-do-checkin');
+    const addDoLiberarCb = document.getElementById('add-do-liberar');
+    const addIsPayingCb = document.getElementById('add-is-paying');
+    if (addDoCheckinCb && addDoLiberarCb) {
+        addDoCheckinCb.addEventListener('change', () => {
+            if (addDoCheckinCb.checked) {
+                addDoLiberarCb.checked = false;
+            }
+        });
+        addDoLiberarCb.addEventListener('change', () => {
+            if (addDoLiberarCb.checked) {
+                addDoCheckinCb.checked = false;
+                if (addIsPayingCb) addIsPayingCb.checked = false;
+            }
+        });
+    }
+    if (addIsPayingCb && addDoLiberarCb) {
+        addIsPayingCb.addEventListener('change', () => {
+            if (addIsPayingCb.checked) {
+                addDoLiberarCb.checked = false;
+            }
+        });
+    }
 
     if (addPlayerBtn && addPlayerModal) {
         addPlayerBtn.addEventListener('click', () => {
@@ -1897,12 +2133,16 @@ function setupMatchViewListeners() {
             const nameInput = document.getElementById('player-name-input');
             const specialInput = document.getElementById('add-is-special');
             const gkInput = document.getElementById('add-is-goalkeeper');
+            const saveToRosterCb = document.getElementById('add-save-to-roster');
+            if (addRosterSearchInput) addRosterSearchInput.value = '';
             if (specialInput) specialInput.checked = false;
             if (gkInput) gkInput.checked = false;
+            if (saveToRosterCb) saveToRosterCb.checked = true;
+            if (addDoLiberarCb) addDoLiberarCb.checked = false;
             if (nameInput) {
                 nameInput.value = '';
-                nameInput.focus();
             }
+            loadAvailableRosterForModal();
         });
     }
 
@@ -1928,14 +2168,24 @@ function setupMatchViewListeners() {
             const isSpecialInput = document.getElementById('add-is-special');
             const isGkInput = document.getElementById('add-is-goalkeeper');
             const doCheckinInput = document.getElementById('add-do-checkin');
+            const doLiberarInput = document.getElementById('add-do-liberar');
+            const saveToRosterInput = document.getElementById('add-save-to-roster');
+            const memberTypeRadio = document.querySelector('input[name="add_member_type"]:checked');
 
             const name = nameInput ? nameInput.value.trim() : '';
             if (!name) return;
 
-            const is_paying = isPayingInput ? isPayingInput.checked : false;
+            let is_paying = isPayingInput ? isPayingInput.checked : false;
             const is_special = isSpecialInput ? isSpecialInput.checked : false;
             const is_goalkeeper = isGkInput ? isGkInput.checked : false;
             const do_checkin = doCheckinInput ? doCheckinInput.checked : false;
+            const do_liberar = doLiberarInput ? doLiberarInput.checked : false;
+            const save_to_roster = saveToRosterInput ? saveToRosterInput.checked : true;
+            const member_type = memberTypeRadio ? memberTypeRadio.value : 'mensalista';
+
+            if (do_liberar) {
+                is_paying = false;
+            }
 
             if (!activeSessionId) {
                 alert('Nenhuma sessão selecionada');
@@ -1952,14 +2202,19 @@ function setupMatchViewListeners() {
                         name: name,
                         is_paying: is_paying,
                         do_checkin: do_checkin,
+                        do_liberar: do_liberar,
                         is_special: is_special,
-                        is_goalkeeper: is_goalkeeper
+                        is_goalkeeper: is_goalkeeper,
+                        save_to_roster: save_to_roster,
+                        member_type: member_type
                     })
                 });
 
                 if (res.ok) {
                     closeModal(addPlayerModal);
-                    loadSessionDetails(activeSessionId, activeSessionDate);
+                    showToast(save_to_roster ? `Jogador ${name} adicionado e salvo no elenco!` : `Jogador ${name} adicionado!`);
+                    await loadSessionDetails(activeSessionId, activeSessionDate);
+                    if (typeof loadRosterData === 'function') loadRosterData();
                 } else {
                     const err = await res.json();
                     alert(`Erro: ${err.detail || 'Falha ao adicionar jogador'}`);
@@ -1971,20 +2226,73 @@ function setupMatchViewListeners() {
     }
 
     const quickAddArrivalForm = document.getElementById('quick-add-arrival-form');
+    const quickPlayerSelect = document.getElementById('quick-player-select');
+    const quickPlayerNameInput = document.getElementById('quick-player-name-input');
+    const quickIsPaying = document.getElementById('quick-is-paying');
+    const quickIsSpecial = document.getElementById('quick-is-special');
+    const quickIsGk = document.getElementById('quick-is-goalkeeper');
+
+    if (quickPlayerSelect) {
+        quickPlayerSelect.addEventListener('change', () => {
+            const val = quickPlayerSelect.value;
+            if (val === '__manual__') {
+                if (quickPlayerNameInput) {
+                    quickPlayerNameInput.classList.remove('hidden');
+                    quickPlayerNameInput.value = '';
+                    quickPlayerNameInput.required = true;
+                    quickPlayerNameInput.focus();
+                }
+            } else {
+                if (quickPlayerNameInput) {
+                    quickPlayerNameInput.classList.add('hidden');
+                    quickPlayerNameInput.required = false;
+                    quickPlayerNameInput.value = val;
+                }
+                const selectedOpt = quickPlayerSelect.options[quickPlayerSelect.selectedIndex];
+                if (selectedOpt && val) {
+                    if (quickIsPaying) {
+                        quickIsPaying.checked = selectedOpt.dataset.isPaying === 'true';
+                    }
+                    if (quickIsGk) {
+                        quickIsGk.checked = selectedOpt.dataset.isGk === 'true';
+                    }
+                    if (quickIsSpecial) {
+                        const cat = selectedOpt.dataset.category;
+                        quickIsSpecial.checked = Boolean(cat && cat !== 'default');
+                    }
+                }
+            }
+        });
+    }
+
     if (quickAddArrivalForm) {
         quickAddArrivalForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const nameInput = document.getElementById('quick-player-name-input');
-            const isPayingInput = document.getElementById('quick-is-paying');
-            const isSpecialInput = document.getElementById('quick-is-special');
-            const isGkInput = document.getElementById('quick-is-goalkeeper');
 
-            const name = nameInput ? nameInput.value.trim() : '';
-            if (!name) return;
+            let name = '';
+            if (quickPlayerSelect && quickPlayerSelect.value === '__manual__') {
+                name = quickPlayerNameInput ? quickPlayerNameInput.value.trim() : '';
+            } else if (quickPlayerSelect && quickPlayerSelect.value) {
+                name = quickPlayerSelect.value.trim();
+            } else if (quickPlayerNameInput && !quickPlayerNameInput.classList.contains('hidden')) {
+                name = quickPlayerNameInput.value.trim();
+            }
 
-            const is_paying = isPayingInput ? isPayingInput.checked : true;
-            const is_special = isSpecialInput ? isSpecialInput.checked : false;
-            const is_goalkeeper = isGkInput ? isGkInput.checked : false;
+            if (!name) {
+                alert('Por favor, selecione um atleta do elenco ou digite o nome.');
+                if (quickPlayerSelect) quickPlayerSelect.focus();
+                return;
+            }
+
+            const is_paying = quickIsPaying ? quickIsPaying.checked : true;
+            const is_special = quickIsSpecial ? quickIsSpecial.checked : false;
+            const is_goalkeeper = quickIsGk ? quickIsGk.checked : false;
+
+            const submitBtn = quickAddArrivalForm.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Confirmando...';
+            }
 
             try {
                 if (currentPublicHash) {
@@ -2004,12 +2312,20 @@ function setupMatchViewListeners() {
                     });
 
                     if (res.ok) {
-                        if (nameInput) nameInput.value = '';
-                        if (isSpecialInput) isSpecialInput.checked = false;
-                        if (isGkInput) isGkInput.checked = false;
+                        if (quickPlayerSelect) quickPlayerSelect.value = '';
+                        if (quickPlayerNameInput) {
+                            quickPlayerNameInput.value = '';
+                            quickPlayerNameInput.classList.add('hidden');
+                        }
+                        if (quickIsSpecial) quickIsSpecial.checked = false;
+                        if (quickIsGk) quickIsGk.checked = false;
+                        showToast(`📍 Chegada de ${name} confirmada!`);
                         const data = await res.json();
                         renderMatchData(data);
                         return;
+                    } else {
+                        const err = await res.json();
+                        alert(`Erro: ${err.detail || 'Falha ao registrar chegada'}`);
                     }
                 }
 
@@ -2030,9 +2346,14 @@ function setupMatchViewListeners() {
                     });
 
                     if (res.ok) {
-                        if (nameInput) nameInput.value = '';
-                        if (isSpecialInput) isSpecialInput.checked = false;
-                        if (isGkInput) isGkInput.checked = false;
+                        if (quickPlayerSelect) quickPlayerSelect.value = '';
+                        if (quickPlayerNameInput) {
+                            quickPlayerNameInput.value = '';
+                            quickPlayerNameInput.classList.add('hidden');
+                        }
+                        if (quickIsSpecial) quickIsSpecial.checked = false;
+                        if (quickIsGk) quickIsGk.checked = false;
+                        showToast(`📍 Chegada de ${name} confirmada!`);
                         loadSessionDetails(activeSessionId, activeSessionDate);
                     } else {
                         const err = await res.json();
@@ -2041,6 +2362,12 @@ function setupMatchViewListeners() {
                 }
             } catch (err) {
                 console.error('Erro ao registrar chegada do jogador:', err);
+                alert('Erro de conexão ao registrar chegada.');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '📍 Confirmar Chegada';
+                }
             }
         });
     }
@@ -2111,6 +2438,49 @@ async function fetchMatchData(publicHash, adminToken) {
     }
 }
 
+function populateQuickArrivalRosterSelect(availableRoster) {
+    const select = document.getElementById('quick-player-select');
+    if (!select) return;
+
+    const previousSelected = select.value;
+    select.innerHTML = '<option value="">-- Selecione o atleta do elenco --</option>';
+
+    if (Array.isArray(availableRoster) && availableRoster.length > 0) {
+        availableRoster.forEach(m => {
+            const isMensalista = m.member_type === 'mensalista';
+            const isPaid = m.payment_status === 'paid';
+            const isGk = Boolean(m.is_goalkeeper);
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.dataset.isPaying = isPaid ? 'true' : 'false';
+            opt.dataset.isGk = isGk ? 'true' : 'false';
+            opt.dataset.category = m.category || 'default';
+            opt.dataset.memberType = m.member_type || 'mensalista';
+
+            const tags = [
+                isMensalista ? '⭐ Mensalista' : '👤 Avulso',
+                isPaid ? '💳 Pago' : '⏳ Pendente',
+                isGk ? '🧤 Gol' : ''
+            ].filter(Boolean).join(' · ');
+
+            opt.textContent = `${m.name} (${tags})`;
+            select.appendChild(opt);
+        });
+    }
+
+    const manualOpt = document.createElement('option');
+    manualOpt.value = '__manual__';
+    manualOpt.textContent = '✍️ Outro jogador (digitar nome)...';
+    select.appendChild(manualOpt);
+
+    if (previousSelected && previousSelected !== '__manual__') {
+        const stillExists = Array.from(select.options).some(o => o.value === previousSelected);
+        if (stillExists) {
+            select.value = previousSelected;
+        }
+    }
+}
+
 function renderMatchData(data, isManualAction = false) {
     currentMatchData = data;
     if (data.balance_config) {
@@ -2124,7 +2494,10 @@ function renderMatchData(data, isManualAction = false) {
     if (data.is_admin) {
         adminBadge.classList.remove('hidden');
         adminControlsPanel.classList.remove('hidden');
-        if (quickAddArrivalSection) quickAddArrivalSection.classList.remove('hidden');
+        if (quickAddArrivalSection) {
+            quickAddArrivalSection.classList.remove('hidden');
+            populateQuickArrivalRosterSelect(data.available_roster || []);
+        }
     } else {
         adminBadge.classList.add('hidden');
         adminControlsPanel.classList.add('hidden');
@@ -3716,9 +4089,18 @@ function renderActiveMatchStatus(activeSession) {
     }
 }
 
+function openMatchInNewTab(publicHash, adminToken) {
+    if (!publicHash) return;
+    const hash = adminToken
+        ? `#/match/${publicHash}?admin=${adminToken}`
+        : `#/match/${publicHash}`;
+    const url = `${window.location.origin}${window.location.pathname}${hash}`;
+    window.open(url, '_blank');
+}
+
 function handleOpenActiveMatchLive(publicHash, adminToken) {
     if (publicHash) {
-        window.location.hash = adminToken ? `#/match/${publicHash}?admin=${adminToken}` : `#/match/${publicHash}`;
+        openMatchInNewTab(publicHash, adminToken);
     }
 }
 
@@ -3975,7 +4357,7 @@ function populatePeladaConfigForm(group) {
             const p = JSON.parse(group.frequency_config || '{}');
             const dayInput = document.getElementById('cfg-month-day');
             if (dayInput) dayInput.value = p.day_of_month || 15;
-        } catch (e) {}
+        } catch (e) { }
     } else {
         if (weeklyBox) weeklyBox.classList.remove('hidden');
         if (monthlyBox) monthlyBox.classList.add('hidden');
@@ -3985,7 +4367,7 @@ function populatePeladaConfigForm(group) {
             document.querySelectorAll('input[name="cfg-day"]').forEach(cb => {
                 cb.checked = days.includes(parseInt(cb.value));
             });
-        } catch (e) {}
+        } catch (e) { }
     }
 
     const feeInput = document.getElementById('cfg-monthly-fee');
@@ -4189,11 +4571,53 @@ function setupRosterAndDashboardListeners() {
 
     const btnDashMatch = document.getElementById('btn-dash-goto-match');
     if (btnDashMatch) {
-        btnDashMatch.addEventListener('click', () => {
-            if (currentPublicHash) {
-                window.location.hash = currentAdminToken ? `#/match/${currentPublicHash}?admin=${currentAdminToken}` : `#/match/${currentPublicHash}`;
+        btnDashMatch.addEventListener('click', async () => {
+            let activeHash = (currentGroupActiveSession && currentGroupActiveSession.public_hash) || currentPublicHash;
+            let activeToken = (currentGroupActiveSession && currentGroupActiveSession.admin_token) || currentAdminToken;
+
+            if (!activeHash && activeSessionId && Array.isArray(currentSessions)) {
+                const sess = currentSessions.find(s => s.id === activeSessionId);
+                if (sess && sess.public_hash) {
+                    activeHash = sess.public_hash;
+                    activeToken = sess.admin_token || activeToken;
+                }
+            }
+
+            if (activeHash) {
+                openMatchInNewTab(activeHash, activeToken);
+                return;
+            }
+
+            await loadDashboardData();
+            activeHash = (currentGroupActiveSession && currentGroupActiveSession.public_hash) || currentPublicHash;
+            activeToken = (currentGroupActiveSession && currentGroupActiveSession.admin_token) || currentAdminToken;
+
+            if (activeHash) {
+                openMatchInNewTab(activeHash, activeToken);
             } else {
                 handleOpenNewMatchday();
+            }
+        });
+    }
+
+    const btnPlayersMatch = document.getElementById('btn-players-goto-match');
+    if (btnPlayersMatch) {
+        btnPlayersMatch.addEventListener('click', () => {
+            let activeHash = (currentGroupActiveSession && currentGroupActiveSession.public_hash) || currentPublicHash;
+            let activeToken = (currentGroupActiveSession && currentGroupActiveSession.admin_token) || currentAdminToken;
+
+            if (!activeHash && activeSessionId && Array.isArray(currentSessions)) {
+                const sess = currentSessions.find(s => s.id === activeSessionId);
+                if (sess && sess.public_hash) {
+                    activeHash = sess.public_hash;
+                    activeToken = sess.admin_token || activeToken;
+                }
+            }
+
+            if (activeHash) {
+                openMatchInNewTab(activeHash, activeToken);
+            } else {
+                showToast('Nenhuma sessão com quadra ativa.');
             }
         });
     }
@@ -4416,6 +4840,7 @@ window.handleDeleteMember = handleDeleteMember;
 window.handleOpenActiveMatchLive = handleOpenActiveMatchLive;
 window.handleOpenActiveMatchPlayers = handleOpenActiveMatchPlayers;
 window.handleOpenNewMatchday = handleOpenNewMatchday;
+window.openMatchInNewTab = openMatchInNewTab;
 window.escapeHtml = escapeHtml;
 
 

@@ -255,10 +255,25 @@ def toggle_monthly_payment(
 
     # Se houver jogadores nesta sessão atual vinculados a este member, atualizar o is_paying correspondente
     # para sincronizar em tempo real com o dia de jogo atual
-    active_sessions = db.query(Session).filter(Session.group_id == group_id, Session.is_active == True).all()
+    member = db.query(Member).filter(Member.id == member_id).first()
+    active_sessions = db.query(Session).filter(
+        (Session.group_id == group_id) | (Session.group_id.is_(None)),
+        Session.is_active == True
+    ).all()
     for s in active_sessions:
-        players = db.query(Player).filter(Player.session_id == s.id, Player.member_id == member_id).all()
+        if not s.group_id:
+            s.group_id = group_id
+            db.add(s)
+        players_query = db.query(Player).filter(Player.session_id == s.id)
+        if member:
+            players_query = players_query.filter(
+                (Player.member_id == member_id) | (func.lower(func.trim(Player.name)) == member.name.strip().lower())
+            )
+        else:
+            players_query = players_query.filter(Player.member_id == member_id)
+        players = players_query.all()
         for p in players:
+            p.member_id = member_id
             p.is_paying = (payment.status == "paid")
             db.add(p)
     db.commit()

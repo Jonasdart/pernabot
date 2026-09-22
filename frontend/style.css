@@ -3287,3 +3287,58 @@ body.modal-open {
     }
 }
 
+.modal-tab-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.modal-tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.modal-tab-btn.active {
+    color: var(--primary);
+    background: rgba(0, 210, 255, 0.1);
+    border: 1px solid rgba(0, 210, 255, 0.2);
+}
+
+.roster-pick-item {
+    transition: all 0.15s ease;
+}
+
+.roster-pick-item:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.roster-actions {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+@media (max-width: 480px) {
+    .roster-pick-item {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 0.6rem !important;
+    }
+    .roster-actions {
+        justify-content: stretch;
+    }
+    .roster-actions .btn {
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+    }
+}
+
+

@@ -61,8 +61,10 @@ from src.services.player_service import (
     get_all_active_players, leave_presence, register_arrival, 
     set_paying_status, confirm_presence, cancel_presence, get_player, restart_session,
     import_whatsapp_presence_list, parse_whatsapp_presence_list, set_player_category,
-    set_player_goalkeeper
+    set_player_goalkeeper, sync_session_player_payments, find_member_for_player,
+    check_member_payment_status, get_session_group, normalize_name_for_matching
 )
+from src.services.group_service import list_members
 from src.engine.explainer import get_team_captains
 from src.engine.match import (
     draw_teams, rotate_players, pull_next_player, 
@@ -100,9 +102,12 @@ class AddPlayerRequest(BaseModel):
     is_paying: Optional[bool] = False
     is_confirmed: Optional[bool] = True
     do_checkin: Optional[bool] = False
+    do_liberar: Optional[bool] = False
     is_special: Optional[bool] = False
     category: Optional[str] = None
     is_goalkeeper: Optional[bool] = False
+    save_to_roster: Optional[bool] = False
+    member_type: Optional[str] = "mensalista"
 
 class ImportWhatsappRequest(BaseModel):
     text: str
@@ -126,6 +131,7 @@ def format_iso_utc(dt):
 
 def build_match_response(session: models.Session, db: Session, token: Optional[str] = None) -> Dict[str, Any]:
     ensure_session_hashes(db, session)
+    sync_session_player_payments(db, session)
     is_admin = bool(token and session.admin_token and token == session.admin_token)
     
     active_players = get_all_active_players(db, session.id)
@@ -214,6 +220,31 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
         )
         return data
         
+    group = get_session_group(db, session)
+    available_roster = []
+    if group:
+        year = session.created_at.year if session.created_at else datetime.now(timezone.utc).year
+        month = session.created_at.month if session.created_at else datetime.now(timezone.utc).month
+        roster = list_members(db, group.id, active_only=True, year=year, month=month)
+        
+        arrived_players = [p for p in all_session_players if p.has_arrived]
+        arrived_member_ids = {p.member_id for p in arrived_players if p.member_id}
+        arrived_names_norm = {normalize_name_for_matching(p.name) for p in arrived_players if p.name}
+        
+        for m in roster:
+            if m["id"] in arrived_member_ids:
+                continue
+            if normalize_name_for_matching(m["name"]) in arrived_names_norm:
+                continue
+            available_roster.append({
+                "id": m["id"],
+                "name": m["name"],
+                "member_type": m["member_type"],
+                "payment_status": m["payment_status"],
+                "is_goalkeeper": bool(m["is_goalkeeper"]),
+                "category": m["category"] or "default"
+            })
+
     return {
         "session_id": session.id,
         "public_hash": session.public_hash,
@@ -245,6 +276,7 @@ def build_match_response(session: models.Session, db: Session, token: Optional[s
         "queue": [serialize_queue_player(p) for p in sorted_waiting],
         "goalkeeper_queue": [serialize_player(p) for p in sorted_gk_waiting],
         "all_players": [serialize_player(p) for p in all_session_players],
+        "available_roster": available_roster,
         "balance_config": {
             "enabled": BALANCE_RULE_ENABLED,
             "key": BALANCE_CATEGORY_KEY,
@@ -592,6 +624,9 @@ def list_players(session_id: int, key: Optional[str] = None, db: Session = Depen
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     check_admin_key(key)
+
+    # Sincronizar pagamentos e vínculo com o elenco automaticamente
+    sync_session_player_payments(db, session)
         
     players = db.query(models.Player).filter(
         models.Player.session_id == session_id
@@ -617,11 +652,14 @@ def list_players(session_id: int, key: Optional[str] = None, db: Session = Depen
         matches = wins + draws + losses if (wins or draws or losses) else p.matches_played
         estimated_time = (matches * avg_duration_seconds) / 60  # in minutes
         points = (wins * 3) + (draws * 1)
+        m_type = p.member.member_type if (p.member and p.member.member_type) else None
         
         result.append({
             "id": p.id,
             "name": p.name,
             "telegram_id": p.telegram_id,
+            "member_id": p.member_id,
+            "member_type": m_type,
             "is_confirmed": p.is_confirmed,
             "has_arrived": p.has_arrived,
             "is_paying": p.is_paying,
@@ -813,41 +851,111 @@ def add_session_player(session_id: int, req: AddPlayerRequest, key: Optional[str
     name = req.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Nome do jogador é obrigatório")
+
+    group = get_session_group(db, session)
+    group_id = group.id if group else None
+    matched_member = find_member_for_player(db, group_id, name=name) if group_id else None
+    
+    # Check payment from roster
+    is_paid_val = bool(req.is_paying)
+    if matched_member and group_id and not is_paid_val:
+        if check_member_payment_status(db, group_id, matched_member, session.created_at):
+            is_paid_val = True
+
+    resolved_cat = (BALANCE_CATEGORY_KEY if req.is_special else (req.category or "default"))
+    if resolved_cat == "default" and matched_member and matched_member.category and matched_member.category != "default":
+        resolved_cat = matched_member.category
+
+    resolved_gk = bool(req.is_goalkeeper) if req.is_goalkeeper is not None else (matched_member.is_goalkeeper if matched_member else False)
+
+    # Cadastrar novo membro no elenco diretamente por aqui se solicitado
+    if not matched_member and group_id and req.save_to_roster:
+        matched_member = create_member(
+            db,
+            group_id=group_id,
+            name=name,
+            member_type=req.member_type or "mensalista",
+            is_goalkeeper=resolved_gk,
+            category=resolved_cat
+        )
+        if is_paid_val and (req.member_type or "mensalista") == "mensalista":
+            year = session.created_at.year if session.created_at else datetime.now(timezone.utc).year
+            month = session.created_at.month if session.created_at else datetime.now(timezone.utc).month
+            toggle_monthly_payment(db, group_id, matched_member.id, year, month, is_paid=True)
         
     player = get_player(db, session_id, name=name)
     if not player:
-        cat = BALANCE_CATEGORY_KEY if req.is_special else (req.category or "default")
         player = models.Player(
             session_id=session_id,
             name=name,
+            member_id=matched_member.id if matched_member else None,
             is_confirmed=bool(req.is_confirmed or req.do_checkin),
-            is_paying=bool(req.is_paying),
-            category=cat,
-            is_goalkeeper=bool(req.is_goalkeeper) if req.is_goalkeeper is not None else False
+            is_paying=is_paid_val,
+            category=resolved_cat,
+            is_goalkeeper=resolved_gk
         )
         db.add(player)
         db.commit()
         db.refresh(player)
     else:
+        if matched_member and not player.member_id:
+            player.member_id = matched_member.id
         if req.is_confirmed:
             player.is_confirmed = True
-        if req.is_paying is not None:
+        if is_paid_val or req.is_paying:
+            player.is_paying = True
+        elif req.is_paying is not None:
             player.is_paying = req.is_paying
         if req.is_goalkeeper is not None:
             player.is_goalkeeper = bool(req.is_goalkeeper)
+        elif resolved_gk:
+            player.is_goalkeeper = True
         if req.is_special is not None:
             player.category = BALANCE_CATEGORY_KEY if req.is_special else "default"
         elif req.category is not None:
             player.category = req.category
+        elif resolved_cat and resolved_cat != "default":
+            player.category = resolved_cat
         db.commit()
         
-    if req.do_checkin:
+    if req.do_liberar:
+        register_arrival(db, session_id, name=player.name)
+    elif req.do_checkin:
         if not player.is_paying:
             player.is_paying = True
             db.commit()
         register_arrival(db, session_id, name=player.name)
         
     return {"message": f"Jogador {player.name} adicionado/atualizado com sucesso", "player_id": player.id}
+
+@app.get("/sessions/{session_id}/available-members")
+def get_session_available_members(session_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+    check_admin_key(key)
+    
+    group = get_session_group(db, session)
+    if not group:
+        return []
+        
+    players = db.query(models.Player).filter(models.Player.session_id == session.id).all()
+    in_session_member_ids = {p.member_id for p in players if p.member_id}
+    in_session_names_norm = {normalize_name_for_matching(p.name) for p in players if p.name}
+    
+    year = session.created_at.year if session.created_at else datetime.now(timezone.utc).year
+    month = session.created_at.month if session.created_at else datetime.now(timezone.utc).month
+    roster = list_members(db, group.id, active_only=True, year=year, month=month)
+    
+    available = []
+    for m in roster:
+        if m["id"] in in_session_member_ids:
+            continue
+        if normalize_name_for_matching(m["name"]) in in_session_names_norm:
+            continue
+        available.append(m)
+        
+    return available
 
 @app.post("/sessions/hash/{public_hash}/recomecar")
 def restart_session_by_hash(public_hash: str, token: Optional[str] = None, db: Session = Depends(get_db)):
@@ -1275,6 +1383,10 @@ def api_add_members_to_session(group_id: int, session_id: int, req: AddMembersTo
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
+    if not session.group_id:
+        session.group_id = group_id
+        db.add(session)
+        db.commit()
 
     target_members = []
     if req.all_mensalistas:

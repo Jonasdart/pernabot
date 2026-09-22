@@ -161,6 +161,26 @@ def run_auto_migrations():
                 normalized = p_name.strip().title()
                 if p_name != normalized:
                     conn.execute(text("UPDATE players SET name = :n WHERE id = :id"), {"n": normalized, "id": p_id})
+
+            # Ensure sessions without group_id are linked to the default group
+            conn.execute(text("""
+                UPDATE sessions
+                SET group_id = (SELECT id FROM groups ORDER BY id ASC LIMIT 1)
+                WHERE group_id IS NULL AND (SELECT COUNT(*) FROM groups) > 0
+            """))
+
+            # Ensure players without member_id are linked to members matching their name
+            conn.execute(text("""
+                UPDATE players
+                SET member_id = (
+                    SELECT m.id FROM members m
+                    JOIN sessions s ON s.id = players.session_id
+                    WHERE (m.group_id = s.group_id OR s.group_id IS NULL)
+                      AND LOWER(TRIM(m.name)) = LOWER(TRIM(players.name))
+                    LIMIT 1
+                )
+                WHERE member_id IS NULL
+            """))
     except Exception as e:
         print(f"Auto-migration notice: {e}")
 
