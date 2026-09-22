@@ -743,13 +743,13 @@ function renderPresenceTable(players) {
             const checkoutBtn = document.createElement('button');
             checkoutBtn.className = 'btn-action-sm checkout';
             checkoutBtn.textContent = '👋 Saiu';
-            checkoutBtn.onclick = () => handleCheckoutPlayer(player);
+            checkoutBtn.onclick = (e) => handleCheckoutPlayer(player, e.currentTarget);
             actionTd.appendChild(checkoutBtn);
         } else {
             const checkinBtn = document.createElement('button');
             checkinBtn.className = 'btn-action-sm checkin';
             checkinBtn.textContent = '📍 Chegou';
-            checkinBtn.onclick = () => handleCheckinPlayer(player);
+            checkinBtn.onclick = (e) => handleCheckinPlayer(player, false, e.currentTarget);
             actionTd.appendChild(checkinBtn);
 
             if (!player.is_paying) {
@@ -759,7 +759,7 @@ function renderPresenceTable(players) {
                 liberarBtn.style.color = '#38bdf8';
                 liberarBtn.style.borderColor = 'rgba(56, 189, 248, 0.4)';
                 liberarBtn.textContent = '🔓 Liberar';
-                liberarBtn.onclick = () => handleLiberarPlayer(player);
+                liberarBtn.onclick = (e) => handleLiberarPlayer(player, e.currentTarget);
                 actionTd.appendChild(liberarBtn);
             }
         }
@@ -970,7 +970,20 @@ function promptPaymentCheckin(player, onSuccess) {
     }
 }
 
-async function handleLiberarPlayer(player) {
+const pendingLiberations = new Set();
+async function handleLiberarPlayer(player, triggerBtn = null) {
+    if (!player || !player.id) return;
+    if (pendingLiberations.has(player.id)) return;
+    pendingLiberations.add(player.id);
+
+    let originalContent = '';
+    if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.classList.add('is-loading');
+        originalContent = triggerBtn.innerHTML;
+        triggerBtn.innerHTML = '<span class="spin-icon">⏳</span> Liberando...';
+    }
+
     try {
         if (currentPublicHash) {
             let url = `${API_BASE}/sessions/hash/${currentPublicHash}/liberar`;
@@ -1000,16 +1013,37 @@ async function handleLiberarPlayer(player) {
         }
     } catch (e) {
         console.error('Erro ao liberar jogador:', e);
+    } finally {
+        pendingLiberations.delete(player.id);
+        if (triggerBtn && triggerBtn.parentNode) {
+            triggerBtn.disabled = false;
+            triggerBtn.classList.remove('is-loading');
+            if (originalContent) triggerBtn.innerHTML = originalContent;
+        }
     }
 }
 
-async function handleCheckinPlayer(player, forcePay = false) {
+const pendingCheckins = new Set();
+async function handleCheckinPlayer(player, forcePay = false, triggerBtn = null) {
+    if (!player || !player.id) return;
+
     if (!player.is_paying && !forcePay) {
         promptPaymentCheckin(player, () => {
             if (activeSessionId) loadSessionDetails(activeSessionId, activeSessionDate);
             if (currentPublicHash) fetchMatchData(currentPublicHash, currentAdminToken);
         });
         return;
+    }
+
+    if (pendingCheckins.has(player.id)) return;
+    pendingCheckins.add(player.id);
+
+    let originalContent = '';
+    if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.classList.add('is-loading');
+        originalContent = triggerBtn.innerHTML;
+        triggerBtn.innerHTML = '<span class="spin-icon">⏳</span> Chegando...';
     }
 
     try {
@@ -1041,10 +1075,31 @@ async function handleCheckinPlayer(player, forcePay = false) {
         }
     } catch (e) {
         console.error('Erro no check-in:', e);
+    } finally {
+        pendingCheckins.delete(player.id);
+        if (triggerBtn && triggerBtn.parentNode) {
+            triggerBtn.disabled = false;
+            triggerBtn.classList.remove('is-loading');
+            if (originalContent) triggerBtn.innerHTML = originalContent;
+        }
     }
 }
 
-async function handleCheckoutPlayer(player) {
+const pendingCheckouts = new Set();
+async function handleCheckoutPlayer(player, triggerBtn = null) {
+    if (!player || !player.id) return;
+    if (pendingCheckouts.has(player.id)) return;
+    pendingCheckouts.add(player.id);
+
+    let originalContent = '';
+    if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.classList.add('is-loading');
+        originalContent = triggerBtn.innerHTML;
+        const isSmallIcon = triggerBtn.classList.contains('btn-icon-sm');
+        triggerBtn.innerHTML = isSmallIcon ? '<span class="spin-icon">⏳</span>' : '<span class="spin-icon">⏳</span> Saindo...';
+    }
+
     try {
         if (currentPublicHash) {
             let url = `${API_BASE}/sessions/hash/${currentPublicHash}/checkout`;
@@ -1074,6 +1129,13 @@ async function handleCheckoutPlayer(player) {
         }
     } catch (e) {
         console.error('Erro no checkout:', e);
+    } finally {
+        pendingCheckouts.delete(player.id);
+        if (triggerBtn && triggerBtn.parentNode) {
+            triggerBtn.disabled = false;
+            triggerBtn.classList.remove('is-loading');
+            if (originalContent) triggerBtn.innerHTML = originalContent;
+        }
     }
 }
 
@@ -1929,13 +1991,13 @@ function renderTeamPlayers(container, players, isAdmin) {
             btnDescer.className = 'btn-icon-sm descer';
             btnDescer.title = 'Descer para a reserva';
             btnDescer.textContent = '🪑';
-            btnDescer.addEventListener('click', () => handlePlayerAction('descer', p.id));
+            btnDescer.addEventListener('click', (e) => handlePlayerAction('descer', p.id, e.currentTarget));
 
             const btnSair = document.createElement('button');
             btnSair.className = 'btn-icon-sm sair';
             btnSair.title = 'Sair da pelada';
             btnSair.textContent = '👋';
-            btnSair.addEventListener('click', () => handlePlayerAction('sair', p.id));
+            btnSair.addEventListener('click', (e) => handlePlayerAction('sair', p.id, e.currentTarget));
 
             actions.appendChild(btnDescer);
             actions.appendChild(btnSair);
@@ -1984,13 +2046,13 @@ function renderGoalkeeper(container, gk, isAdmin) {
         btnDescer.className = 'btn-icon-sm descer';
         btnDescer.title = 'Descer para a reserva de goleiros';
         btnDescer.textContent = '🪑';
-        btnDescer.addEventListener('click', () => handlePlayerAction('descer', gk.id));
+        btnDescer.addEventListener('click', (e) => handlePlayerAction('descer', gk.id, e.currentTarget));
 
         const btnSair = document.createElement('button');
         btnSair.className = 'btn-icon-sm sair';
         btnSair.title = 'Sair da pelada';
         btnSair.textContent = '👋';
-        btnSair.addEventListener('click', () => handlePlayerAction('sair', gk.id));
+        btnSair.addEventListener('click', (e) => handlePlayerAction('sair', gk.id, e.currentTarget));
 
         actions.appendChild(btnDescer);
         actions.appendChild(btnSair);
@@ -2098,7 +2160,7 @@ function renderGoalkeeperQueue(gkQueue, nextGk, isAdmin) {
             const checkoutBtn = document.createElement('button');
             checkoutBtn.className = 'btn-action-sm checkout';
             checkoutBtn.textContent = '👋 Saiu';
-            checkoutBtn.onclick = () => handleCheckoutPlayer(p);
+            checkoutBtn.onclick = (e) => handleCheckoutPlayer(p, e.currentTarget);
             actionTd.appendChild(checkoutBtn);
         }
 
@@ -2139,7 +2201,7 @@ function renderNextTeam(nextPlayers, isAdmin) {
                     btnOut.className = 'btn-icon-sm sair';
                     btnOut.title = 'Marcar como saiu';
                     btnOut.textContent = '👋';
-                    btnOut.onclick = () => handleCheckoutPlayer(p);
+                    btnOut.onclick = (e) => handleCheckoutPlayer(p, e.currentTarget);
                     chip.appendChild(btnOut);
                 }
                 liveNextTeamListEl.appendChild(chip);
@@ -2170,7 +2232,7 @@ function renderNextTeam(nextPlayers, isAdmin) {
                     const checkoutBtn = document.createElement('button');
                     checkoutBtn.className = 'btn-action-sm checkout';
                     checkoutBtn.textContent = '👋 Saiu';
-                    checkoutBtn.onclick = () => handleCheckoutPlayer(p);
+                    checkoutBtn.onclick = (e) => handleCheckoutPlayer(p, e.currentTarget);
                     card.querySelector('.next-player-action').appendChild(checkoutBtn);
                 }
 
@@ -2213,7 +2275,7 @@ function renderPendingCheckinList(allPlayers, isAdmin) {
             const checkinBtn = document.createElement('button');
             checkinBtn.className = 'btn-action-sm checkin';
             checkinBtn.textContent = '📍 Chegou';
-            checkinBtn.onclick = () => handleCheckinPlayer(p);
+            checkinBtn.onclick = (e) => handleCheckinPlayer(p, false, e.currentTarget);
             card.querySelector('.card-action').appendChild(checkinBtn);
 
             if (!p.is_paying) {
@@ -2223,7 +2285,7 @@ function renderPendingCheckinList(allPlayers, isAdmin) {
                 liberarBtn.style.color = '#38bdf8';
                 liberarBtn.style.borderColor = 'rgba(56, 189, 248, 0.4)';
                 liberarBtn.textContent = '🔓 Liberar';
-                liberarBtn.onclick = () => handleLiberarPlayer(p);
+                liberarBtn.onclick = (e) => handleLiberarPlayer(p, e.currentTarget);
                 card.querySelector('.card-action').appendChild(liberarBtn);
             }
         }
@@ -2299,7 +2361,7 @@ function renderMatchQueue(queuePlayers, isAdmin) {
             const checkoutBtn = document.createElement('button');
             checkoutBtn.className = 'btn-action-sm checkout';
             checkoutBtn.textContent = '👋 Saiu';
-            checkoutBtn.onclick = () => handleCheckoutPlayer(p);
+            checkoutBtn.onclick = (e) => handleCheckoutPlayer(p, e.currentTarget);
             actionTd.appendChild(checkoutBtn);
         }
 
@@ -2307,8 +2369,31 @@ function renderMatchQueue(queuePlayers, isAdmin) {
     });
 }
 
+let isRotatingMatch = false;
 async function handleRotateMatch(winner) {
     if (!currentPublicHash || !currentAdminToken) return;
+    if (isRotatingMatch) return;
+
+    isRotatingMatch = true;
+
+    const btns = [btnWinT1, btnDraw, btnWinT2];
+    const prevTexts = new Map();
+    btns.forEach(btn => {
+        if (btn) {
+            prevTexts.set(btn, btn.textContent);
+            btn.disabled = true;
+            btn.classList.add('is-loading');
+        }
+    });
+
+    let targetBtn = null;
+    if (winner === 1) targetBtn = btnWinT1;
+    else if (winner === 2) targetBtn = btnWinT2;
+    else if (winner === 0) targetBtn = btnDraw;
+
+    if (targetBtn) {
+        targetBtn.innerHTML = '<span class="spin-icon">⏳</span> Registrando...';
+    }
 
     try {
         const response = await fetch(`${API_BASE}/sessions/hash/${currentPublicHash}/vencer?token=${encodeURIComponent(currentAdminToken)}`, {
@@ -2334,14 +2419,43 @@ async function handleRotateMatch(winner) {
     } catch (error) {
         console.error('Erro na rotação:', error);
         alert('Erro de conexão ao registrar resultado.');
+    } finally {
+        isRotatingMatch = false;
+        btns.forEach(btn => {
+            if (btn) {
+                btn.disabled = false;
+                btn.classList.remove('is-loading');
+                if (prevTexts.has(btn) && (!targetBtn || targetBtn !== btn)) {
+                    btn.textContent = prevTexts.get(btn);
+                }
+            }
+        });
+        if (targetBtn && targetBtn.innerHTML.includes('⏳')) {
+            targetBtn.textContent = prevTexts.get(targetBtn) || targetBtn.textContent;
+        }
     }
 }
 
-async function handlePlayerAction(action, playerId) {
+const pendingPlayerActions = new Set();
+async function handlePlayerAction(action, playerId, triggerBtn = null) {
     if (!currentPublicHash || !currentAdminToken) return;
+
+    const actionKey = `${action}_${playerId}`;
+    if (pendingPlayerActions.has(actionKey)) return;
 
     const actionText = action === 'descer' ? 'descer este jogador para a reserva' : 'remover este jogador da pelada';
     if (!confirm(`Tem certeza que deseja ${actionText}?`)) return;
+
+    if (pendingPlayerActions.has(actionKey)) return;
+    pendingPlayerActions.add(actionKey);
+
+    let originalContent = '';
+    if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.classList.add('is-loading');
+        originalContent = triggerBtn.innerHTML;
+        triggerBtn.innerHTML = '<span class="spin-icon">⏳</span>';
+    }
 
     // Clear entering highlights so the new replacement player and existing teammates have matching uniform styling
     clearEnteringHighlights();
@@ -2364,6 +2478,13 @@ async function handlePlayerAction(action, playerId) {
     } catch (error) {
         console.error(`Erro ao ${action}:`, error);
         alert('Erro de conexão ao executar ação.');
+    } finally {
+        pendingPlayerActions.delete(actionKey);
+        if (triggerBtn && triggerBtn.parentNode) {
+            triggerBtn.disabled = false;
+            triggerBtn.classList.remove('is-loading');
+            if (originalContent) triggerBtn.innerHTML = originalContent;
+        }
     }
 }
 

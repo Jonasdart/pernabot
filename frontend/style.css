@@ -392,6 +392,29 @@ body {
     animation: spin 0.8s linear infinite;
 }
 
+button:disabled,
+.btn:disabled,
+.btn-action:disabled,
+.btn-action-sm:disabled,
+.btn-icon-sm:disabled {
+    opacity: 0.55 !important;
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+    transform: none !important;
+    box-shadow: none !important;
+    filter: grayscale(25%);
+}
+
+.btn-action.is-loading,
+.btn-action-sm.is-loading,
+.btn-icon-sm.is-loading,
+.btn.is-loading {
+    opacity: 0.8 !important;
+    cursor: wait !important;
+    pointer-events: none !important;
+    transform: none !important;
+}
+
 /* Loader */
 .loader {
     width: 40px;
