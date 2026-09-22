@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, Float, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from src.database import Base
 
 class Player(Base):
@@ -10,6 +10,12 @@ class Player(Base):
     telegram_id = Column(Integer, index=True, nullable=True)
     telegram_username = Column(String, nullable=True)
     name = Column(String, nullable=False)
+
+    @validates("name")
+    def validate_name(self, key, value):
+        if value is not None:
+            return value.strip().title()
+        return value
     
     is_confirmed = Column(Boolean, default=False)
     has_arrived = Column(Boolean, default=False)
@@ -29,8 +35,10 @@ class Player(Base):
     team_slot = Column(Integer, default=0)
     category = Column(String, default="default", index=True)
     is_goalkeeper = Column(Boolean, default=False, index=True)
+    member_id = Column(Integer, ForeignKey("members.id"), nullable=True, index=True)
 
     session = relationship("Session", back_populates="players")
+    member = relationship("Member", back_populates="session_players")
 
     @property
     def is_special_category(self) -> bool:

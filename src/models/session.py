@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from src.database import Base
@@ -12,6 +12,8 @@ class Session(Base):
     is_active = Column(Boolean, default=True)
     public_hash = Column(String, unique=True, index=True, nullable=True)
     admin_token = Column(String, unique=True, index=True, nullable=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)
     checkin_code = Column(String, index=True, nullable=True)
 
+    group = relationship("Group", back_populates="sessions")
     players = relationship("Player", back_populates="session", cascade="all, delete-orphan")

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pernabot Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=6.0">
+    <link rel="stylesheet" href="/static/style.css?v=8.1">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
 </head>
 
@@ -16,13 +16,289 @@
     </div>
 
     <div class="container">
-        <header class="header">
-            <!-- <h1>Pernabot Dashboard</h1> -->
-            <p></p>
-        </header>
+        <!-- Top Navigation Bar -->
+        <nav class="main-navbar hidden" id="main-navbar">
+            <div class="nav-brand">
+                <span class="brand-icon">⚽</span>
+                <div class="brand-text">
+                    <span class="brand-title" id="nav-group-name">Pernabot</span>
+                    <span class="brand-subtitle" id="nav-group-subtitle">Gestão Oficial da Pelada</span>
+                </div>
+            </div>
+            <div class="nav-menu">
+                <button class="nav-link active" data-nav="dashboard-view">
+                    <span class="nav-icon">🏠</span> Dashboard
+                </button>
+                <button class="nav-link" data-nav="roster-view">
+                    <span class="nav-icon">👥</span> Elenco & Mensalistas
+                </button>
+                <button class="nav-link" data-nav="players-view" id="nav-btn-matchday">
+                    <span class="nav-icon">⚽</span> Dia de Jogo
+                </button>
+                <button class="nav-link" data-nav="sessions-view">
+                    <span class="nav-icon">📊</span> Histórico
+                </button>
+                <button class="nav-link nav-link-logout" id="nav-btn-logout" title="Sair do painel administrativo">
+                    <span class="nav-icon">🚪</span> Sair
+                </button>
+            </div>
+        </nav>
 
         <main>
-            <section id="sessions-view" class="view active">
+            <!-- SECTION 0: AUTH VIEW (LOGIN DE ACESSO RESTRITO À GESTÃO) -->
+            <section id="auth-view" class="view">
+                <div class="glass-card" style="max-width: 380px; margin: 4rem auto; padding: 2.5rem 2rem; text-align: center; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.6);">
+                    <div style="font-size: 3.2rem; margin-bottom: 0.8rem;">🔒</div>
+                    <h2 style="color: #ffffff; margin-bottom: 0.4rem; font-size: 1.35rem;">Gestão da Pelada</h2>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 1.6rem; line-height: 1.4;">Acesso restrito aos administradores. Digite a senha para acessar o painel:</p>
+                    <form id="global-auth-form" style="display: flex; flex-direction: column; gap: 0.85rem;">
+                        <input type="password" id="global-admin-key-input" placeholder="Senha do Administrador" required autocomplete="current-password" style="padding: 0.85rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.4); color: #ffffff; text-align: center; font-size: 1rem; outline: none; width: 100%;">
+                        <button type="submit" id="global-auth-submit-btn" class="btn primary" style="padding: 0.85rem; font-weight: bold; font-size: 0.95rem; width: 100%;">🔓 Entrar no Painel</button>
+                    </form>
+                    <p id="global-auth-error" class="hidden" style="color: #ef4444; margin-top: 1rem; font-size: 0.85rem; font-weight: 500;"></p>
+                </div>
+            </section>
+
+            <!-- SECTION 1: DASHBOARD GERAL DA PELADA -->
+            <section id="dashboard-view" class="view">
+                <div class="dashboard-hero-card">
+                    <div class="hero-top-info">
+                        <div class="hero-title-box">
+                            <h2 id="dash-group-name">Pelada Oficial</h2>
+                            <div class="hero-badges-row">
+                                <span class="info-pill highlight" id="dash-freq-badge">📅 Toda Terça-feira</span>
+                                <span class="info-pill" id="dash-fee-badge">💰 R$ 50,00 / mês</span>
+                                <span class="info-pill" id="dash-due-badge">🗓️ Vence dia 10</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button id="btn-dash-new-matchday" class="btn primary sm" title="Iniciar um novo dia oficial de jogo">🚀 Novo Dia de Jogo</button>
+                            <button id="btn-dash-goto-match" class="btn secondary sm" title="Ir para a quadra ao vivo">⚽ Quadra ao Vivo</button>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-quick-actions">
+                        <button id="btn-dash-manage-roster" class="btn secondary sm">👥 Gerenciar Elenco</button>
+                        <button id="btn-dash-manage-payments" class="btn secondary sm">💳 Cobrança do Mês</button>
+                        <button id="btn-dash-import-wpp" class="btn secondary sm">📥 Importar Lista WhatsApp</button>
+                        <button id="btn-dash-copy-pix" class="btn secondary sm">📋 Copiar Chave PIX</button>
+                    </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div class="metrics-row">
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>👥 Elenco Total</span>
+                            <span>⚽</span>
+                        </div>
+                        <div class="metric-value" id="dash-metric-total-members">0</div>
+                        <div class="metric-footer" id="dash-metric-types-detail">0 Mensalistas · 0 Avulsos</div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>💳 Mensalidades (<span id="dash-metric-month-name">Mês</span>)</span>
+                            <span>📊</span>
+                        </div>
+                        <div class="metric-value" id="dash-metric-paid-ratio">0 / 0</div>
+                        <div class="metric-footer" id="dash-metric-paid-percent">0% adimplentes</div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>💰 Arrecadação</span>
+                            <span>💵</span>
+                        </div>
+                        <div class="metric-value" id="dash-metric-collected">R$ 0,00</div>
+                        <div class="metric-footer" id="dash-metric-expected">Previsto: R$ 0,00</div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>🏆 Peladas Realizadas</span>
+                            <span>📜</span>
+                        </div>
+                        <div class="metric-value" id="dash-metric-sessions-count">0</div>
+                        <div class="metric-footer">Histórico acumulado</div>
+                    </div>
+                </div>
+
+                <!-- Active Match Status Card -->
+                <div class="glass-card" style="margin-top: 1.5rem;">
+                    <div class="section-title-bar">
+                        <h3>⚽ Status do Dia de Jogo</h3>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button id="btn-dash-open-matchday-hub" class="btn primary sm">Acessar Dia de Jogo Atual</button>
+                        </div>
+                    </div>
+                    <div id="dash-match-status-content" style="padding: 0.5rem 0;">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 2: ELENCO & MENSALISTAS -->
+            <section id="roster-view" class="view">
+                <div class="glass-card">
+                    <div class="section-title-bar">
+                        <h2>👥 Gestão da Pelada & Elenco</h2>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button id="btn-import-roster-wpp" class="btn secondary sm" title="Importar lista do WhatsApp diretamente para o elenco">📥 Importar WhatsApp</button>
+                            <button id="btn-new-member" class="btn primary sm">➕ Adicionar Membro</button>
+                        </div>
+                    </div>
+
+                    <div class="tabs-nav" style="margin-top: 1rem;">
+                        <button class="tab-btn active" data-roster-tab="tab-roster-members">👥 Membros do Elenco</button>
+                        <button class="tab-btn" data-roster-tab="tab-roster-payments">💳 Mensalidades</button>
+                        <button class="tab-btn" data-roster-tab="tab-roster-config">⚙️ Configurações da Pelada</button>
+                    </div>
+
+                    <!-- Sub-tab 1: Roster Members -->
+                    <div id="tab-roster-members" class="tab-content active">
+                        <div class="search-filter-wrapper" style="margin-bottom: 1rem;">
+                            <div class="search-box">
+                                <span class="search-icon">🔍</span>
+                                <input type="text" id="roster-search-input" placeholder="Buscar membro por nome..." class="search-input">
+                            </div>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="players-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Nome</th>
+                                        <th>Tipo</th>
+                                        <th>Posição</th>
+                                        <th>Categoria</th>
+                                        <th>Mensalidade Atual</th>
+                                        <th style="text-align: right;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="roster-members-list">
+                                    <!-- Injected dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Sub-tab 2: Monthly Payments Ledger -->
+                    <div id="tab-roster-payments" class="tab-content">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.2rem;">
+                            <div class="month-picker-bar">
+                                <button id="btn-prev-month" class="month-picker-btn">‹</button>
+                                <span id="current-ledger-month-label" class="month-picker-label">Setembro 2026</span>
+                                <button id="btn-next-month" class="month-picker-btn">›</button>
+                            </div>
+
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button id="btn-copy-payment-ledger" class="btn secondary sm" title="Copiar lista de pagantes e pendentes com PIX para WhatsApp">📋 Copiar Cobrança WhatsApp</button>
+                            </div>
+                        </div>
+
+                        <div class="payment-summary-card" style="margin-bottom: 1.2rem;">
+                            <div class="payment-summary-info">
+                                <span>Mensalidades de <strong id="ledger-summary-month-name">Mês</strong>: <strong id="ledger-paid-count">0 / 0</strong></span>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <span id="ledger-percent-badge" class="badge paid">0%</span>
+                                    <span id="ledger-total-badge" class="badge active" style="font-size: 0.85rem;">R$ 0,00</span>
+                                </div>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div id="ledger-progress-fill" class="progress-bar-fill" style="width: 0%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="players-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Mensalista</th>
+                                        <th>Valor Mensalidade</th>
+                                        <th>Status do Mês</th>
+                                        <th>Data Pagamento</th>
+                                        <th style="text-align: right;">Ação Rápida</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="roster-payments-list">
+                                    <!-- Injected dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Sub-tab 3: Pelada Configurations -->
+                    <div id="tab-roster-config" class="tab-content">
+                        <form id="pelada-config-form" style="max-width: 650px; padding: 1rem 0;">
+                            <div class="form-group" style="margin-bottom: 1.2rem;">
+                                <label for="cfg-pelada-name">Nome Oficial da Pelada</label>
+                                <input type="text" id="cfg-pelada-name" class="input-field" placeholder="Ex: Pelada dos Amigos da Terça">
+                            </div>
+
+                            <!-- Frequência Inteligente -->
+                            <div class="form-group" style="margin-bottom: 1.2rem;">
+                                <label for="cfg-frequency-type">Tipo de Frequência dos Jogos</label>
+                                <select id="cfg-frequency-type" class="input-field" style="background: rgba(15,23,42,0.8);">
+                                    <option value="weekly">Semanal (Dias fixos da semana)</option>
+                                    <option value="biweekly">Quinzenal</option>
+                                    <option value="monthly">Mensal (Dia fixo do mês)</option>
+                                    <option value="on_demand">Sob Demanda / Avulso</option>
+                                </select>
+                            </div>
+
+                            <!-- Seletor de dias da semana (se weekly) -->
+                            <div id="cfg-weekly-days-box" class="form-group" style="margin-bottom: 1.2rem;">
+                                <label>Dias da Semana em que Ocorre o Jogo:</label>
+                                <div class="frequency-pill-group">
+                                    <label class="day-pill-checkbox"><input type="checkbox" name="cfg-day" value="0"><span class="day-pill-label">Segunda</span></label>
+                                    <label class="day-pill-checkbox"><input type="checkbox" name="cfg-day" value="1"><span class="day-pill-label">Terça</span></label>
+                                    <label class="day-pill-checkbox"><input type="checkbox" name="cfg-day" value="2"><span class="day-pill-label">Quarta</span></label>
+                                    <label class="day-pill-checkbox"><input type="checkbox" name="cfg-day" value="3"><span class="day-pill-label">Quinta</span></label>
+                                    <label class="day-pill-checkbox"><input type="checkbox" name="cfg-day" value="4"><span class="day-pill-label">Sexta</span></label>
+                                    <label class="day-pill-checkbox"><input type="checkbox" name="cfg-day" value="5"><span class="day-pill-label">Sábado</span></label>
+                                    <label class="day-pill-checkbox"><input type="checkbox" name="cfg-day" value="6"><span class="day-pill-label">Domingo</span></label>
+                                </div>
+                            </div>
+
+                            <!-- Seletor de dia do mês (se monthly) -->
+                            <div id="cfg-monthly-day-box" class="form-group hidden" style="margin-bottom: 1.2rem;">
+                                <label for="cfg-month-day">Dia do Mês para o Jogo (1 a 31):</label>
+                                <input type="number" id="cfg-month-day" min="1" max="31" class="input-field" style="max-width: 150px;" value="15">
+                            </div>
+
+                            <div class="config-form-grid">
+                                <div class="form-group">
+                                    <label for="cfg-monthly-fee">Mensalidade Mensalista (R$)</label>
+                                    <input type="number" step="0.50" id="cfg-monthly-fee" class="input-field" placeholder="50.00">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-match-fee">Taxa Diária Avulso (R$)</label>
+                                    <input type="number" step="0.50" id="cfg-match-fee" class="input-field" placeholder="15.00">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-due-day">Dia Vencimento Mensalidade</label>
+                                    <input type="number" min="1" max="31" id="cfg-due-day" class="input-field" placeholder="10">
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 1.5rem;">
+                                <label for="cfg-pix-key">Chave PIX para Cobrança</label>
+                                <input type="text" id="cfg-pix-key" class="input-field" placeholder="Ex: email@pix.com ou telefone">
+                            </div>
+
+                            <div style="display: flex; justify-content: flex-end;">
+                                <button type="button" id="btn-save-pelada-config" class="btn primary">💾 Salvar Configurações</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 3: SESSIONS LIST (HISTÓRICO) -->
+            <section id="sessions-view" class="view">
                 <div class="glass-card">
                     <div class="section-title-bar">
                         <h2>Histórico de Peladas</h2>
@@ -36,13 +312,15 @@
                 </div>
             </section>
 
+            <!-- SECTION 4: PLAYERS VIEW (DIA DE JOGO / LISTA DE PRESENÇA) -->
             <section id="players-view" class="view">
                 <div class="view-header-actions">
                     <button id="back-btn" class="btn secondary">← Voltar</button>
+                    <button id="btn-add-mensalistas-to-match" class="btn secondary highlight-btn" title="Adicionar todos os mensalistas à presença do dia">⭐ Importar Mensalistas</button>
                     <button id="btn-import-wpp" class="btn secondary" title="Importar Lista de Presença do WhatsApp">📥 Importar WhatsApp</button>
                     <button id="btn-qr-checkin" class="btn secondary" title="Gerar QR Code de Check-in">📷 QR Code Check-in</button>
                     <button id="draw-teams-btn" class="btn secondary" title="Sortear Times">🎲 Sortear</button>
-                    <button id="reset-pelada-btn" class="btn secondary danger-hover" title="Recomeçar Pelada">🔄 Recomeçar</button>
+                    <button id="reset-pelada-btn" class="btn secondary danger-hover" title="Encerrar e Iniciar Novo Dia">🔄 Novo Dia</button>
                     <button id="add-player-btn" class="btn primary sm" title="Adicionar Participante">➕ Adicionar Jogador</button>
                     <button id="refresh-btn" class="btn secondary" title="Atualizar dados">🔄 Atualizar</button>
                 </div>
@@ -527,14 +805,14 @@
     <div id="import-wpp-modal" class="modal-overlay hidden">
         <div class="modal-card glass-card" style="max-width: 520px;">
             <div class="modal-header">
-                <h2>📥 Importar Lista do WhatsApp</h2>
+                <h2 id="import-wpp-modal-title">📥 Importar Lista do WhatsApp</h2>
                 <button id="close-import-wpp-modal-btn" class="btn-close">✕</button>
             </div>
             <div class="modal-body" style="padding: 1.2rem 1rem;">
-                <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.8rem; line-height: 1.4;">
+                <p id="import-wpp-modal-desc" style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.8rem; line-height: 1.4;">
                     Cole a mensagem copiada do WhatsApp com a lista numerada de jogadores.
                 </p>
-                <textarea id="import-wpp-text" placeholder="Exemplo:&#10;Ranca terça às 18:30&#10;&#10;1 - jhimy&#10;2 - jefin&#10;3 - Danilo&#10;4 - Rafael Vitor&#10;..." style="width: 100%; height: 160px; padding: 0.85rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #ffffff; font-family: monospace; font-size: 0.85rem; resize: vertical; outline: none;"></textarea>
+                <textarea id="import-wpp-text" placeholder="Exemplo:&#10;Ranca terça às 18:30&#10;&#10;1 - jhimy&#10;2 - jefin (goleiro)&#10;3 - Danilo&#10;4 - Rafael Vitor&#10;..." style="width: 100%; height: 160px; padding: 0.85rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #ffffff; font-family: monospace; font-size: 0.85rem; resize: vertical; outline: none;"></textarea>
 
                 <div id="import-wpp-preview-section" class="hidden" style="margin-top: 0.8rem; background: rgba(15, 23, 42, 0.6); padding: 0.85rem; border-radius: 10px; border: 1px solid rgba(56, 189, 248, 0.2);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
@@ -544,7 +822,8 @@
                     <div id="import-wpp-names-container" style="display: flex; flex-wrap: wrap; gap: 0.4rem; max-height: 100px; overflow-y: auto;"></div>
                 </div>
 
-                <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.85rem; color: #cbd5e1;">
+                <!-- Opções para Dia de Jogo -->
+                <div id="import-wpp-match-options" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.85rem; color: #cbd5e1;">
                     <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                         <input type="checkbox" id="import-wpp-check-arrived">
                         <span>Marcar como <strong>já chegaram na quadra</strong> (Check-in)</span>
@@ -553,6 +832,15 @@
                         <input type="checkbox" id="import-wpp-check-paid">
                         <span>Marcar como <strong>pagos</strong> (Confirmar pagamento)</span>
                     </label>
+                </div>
+
+                <!-- Opções para Elenco Permanente -->
+                <div id="import-wpp-roster-options" class="hidden" style="margin-top: 1rem; color: #cbd5e1; font-size: 0.85rem;">
+                    <label for="import-wpp-member-type-select">Cadastrar jogadores detectados no elenco como:</label>
+                    <select id="import-wpp-member-type-select" class="input-field" style="background: rgba(15,23,42,0.8); margin-top: 0.4rem;">
+                        <option value="mensalista">⭐ Mensalistas (Pagantes de mensalidade fixa)</option>
+                        <option value="avulso">🎟️ Avulsos (Pagantes de taxa diária por jogo)</option>
+                    </select>
                 </div>
 
                 <div style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.2rem;">
@@ -585,11 +873,60 @@
         </div>
     </div>
 
+    <!-- Modal Adicionar / Editar Membro do Elenco -->
+    <div id="member-modal" class="modal-overlay hidden">
+        <div class="modal-card glass-card" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2 id="member-modal-title">➕ Adicionar Membro</h2>
+                <button id="close-member-modal-btn" class="btn-close">✕</button>
+            </div>
+            <div class="modal-body" style="padding: 1.2rem 1rem;">
+                <form id="member-form">
+                    <input type="hidden" id="member-edit-id" value="">
+                    
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label for="member-name-input">Nome Completo / Apelido</label>
+                        <input type="text" id="member-name-input" class="input-field" placeholder="Ex: Jonas Silva" required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label for="member-type-select">Tipo de Participação</label>
+                        <select id="member-type-select" class="input-field" style="background: rgba(15,23,42,0.8);">
+                            <option value="mensalista">⭐ Mensalista (Paga mensalidade fixa)</option>
+                            <option value="avulso">🎟️ Avulso (Paga taxa por jogo)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label for="member-phone-input">Telefone / WhatsApp (Opcional)</label>
+                        <input type="text" id="member-phone-input" class="input-field" placeholder="Ex: (11) 99999-9999">
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem; color: #cbd5e1; font-size: 0.9rem;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" id="member-is-goalkeeper">
+                            <span>🧤 É Goleiro</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" id="member-is-special">
+                            <span id="member-special-label">🧒 Categoria Jovem</span>
+                        </label>
+                    </div>
+
+                    <div style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem;">
+                        <button type="button" id="btn-cancel-member" class="btn secondary sm">Cancelar</button>
+                        <button type="submit" id="btn-save-member" class="btn primary sm">Salvar Membro</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toast" class="toast hidden"></div>
 
     <script src="/static/qrcode.min.js"></script>
-    <script src="/static/app.js?v=14"></script>
+    <script src="/static/app.js?v=22"></script>
 </body>
 
 </html>

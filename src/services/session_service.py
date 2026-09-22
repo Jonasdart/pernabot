@@ -66,7 +66,8 @@ def get_active_session_by_checkin_code(db: DbSession, checkin_code: str):
         ensure_session_hashes(db, session)
     return session
 
-def create_session(db: DbSession, chat_id: int):
+def create_session(db: DbSession, chat_id: int, group_id: int = None):
+    from src.models.group import Group
     # Check if a checkin_code already exists for this chat_id
     existing_session = db.query(Session).filter(
         Session.chat_id == chat_id,
@@ -82,13 +83,22 @@ def create_session(db: DbSession, chat_id: int):
         db.add(current_session)
         if not persistent_checkin_code and current_session.checkin_code:
             persistent_checkin_code = current_session.checkin_code
+        if not group_id and current_session.group_id:
+            group_id = current_session.group_id
         
+    if not group_id:
+        grp = db.query(Group).filter(Group.chat_id == chat_id).first()
+        if not grp:
+            grp = db.query(Group).first()
+        group_id = grp.id if grp else None
+
     public_hash = uuid.uuid4().hex[:8]
     admin_token = uuid.uuid4().hex[8:24]
     checkin_code = persistent_checkin_code or public_hash
     
     new_session = Session(
         chat_id=chat_id, 
+        group_id=group_id,
         is_active=True,
         public_hash=public_hash,
         admin_token=admin_token,
@@ -98,4 +108,16 @@ def create_session(db: DbSession, chat_id: int):
     db.commit()
     db.refresh(new_session)
     return new_session
+
+
+def create_group_matchday(db: DbSession, group_id: int):
+    """
+    Inicia um novo Dia de Jogo oficial para a pelada (Grupo), desativando o anterior
+    e gerando um novo link/sessão sem perder membros ou duplicar tabelas.
+    """
+    from src.models.group import Group
+    group = db.query(Group).filter(Group.id == group_id).first()
+    chat_id = group.chat_id if (group and group.chat_id) else 0
+    return create_session(db, chat_id=chat_id, group_id=group_id)
+
 

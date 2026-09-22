@@ -588,10 +588,10 @@ def add_player_hash(public_hash: str, req: AddPlayerRequest, token: Optional[str
 
 @app.get("/sessions/{session_id}/players")
 def list_players(session_id: int, key: Optional[str] = None, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    check_admin_key(key)
         
     players = db.query(models.Player).filter(
         models.Player.session_id == session_id
@@ -643,10 +643,10 @@ def list_players(session_id: int, key: Optional[str] = None, db: Session = Depen
 
 @app.post("/sessions/{session_id}/players/{player_id}/checkin")
 def session_player_checkin(session_id: int, player_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Jogador não encontrado")
@@ -657,10 +657,10 @@ def session_player_checkin(session_id: int, player_id: int, key: Optional[str] =
 
 @app.post("/sessions/{session_id}/players/{player_id}/liberar")
 def session_player_liberar(session_id: int, player_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Jogador não encontrado")
@@ -669,10 +669,10 @@ def session_player_liberar(session_id: int, player_id: int, key: Optional[str] =
 
 @app.post("/sessions/{session_id}/players/{player_id}/checkout")
 def session_player_checkout(session_id: int, player_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Jogador não encontrado")
@@ -686,10 +686,10 @@ def session_player_checkout(session_id: int, player_id: int, key: Optional[str] 
 
 @app.post("/sessions/{session_id}/players/{player_id}/pagamento")
 def session_player_payment(session_id: int, player_id: int, req: PaymentActionRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Jogador não encontrado")
@@ -698,10 +698,10 @@ def session_player_payment(session_id: int, player_id: int, req: PaymentActionRe
 
 @app.post("/sessions/{session_id}/players/{player_id}/categoria")
 def session_player_category(session_id: int, player_id: int, req: CategoryActionRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Jogador não encontrado")
@@ -714,10 +714,10 @@ def session_player_category(session_id: int, player_id: int, req: CategoryAction
 
 @app.post("/sessions/{session_id}/players/{player_id}/goleiro")
 def session_player_goalkeeper(session_id: int, player_id: int, req: GoalkeeperActionRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Jogador não encontrado")
@@ -729,10 +729,10 @@ def session_player_goalkeeper(session_id: int, player_id: int, req: GoalkeeperAc
 
 @app.post("/sessions/{session_id}/players/{player_id}/presenca")
 def session_player_presence(session_id: int, player_id: int, req: PresenceActionRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Jogador não encontrado")
@@ -759,10 +759,10 @@ def rename_session_player(
     key: Optional[str] = None, 
     db: Session = Depends(get_db)
 ):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Jogador não encontrado")
@@ -785,10 +785,10 @@ def rename_session_player(
 
 @app.delete("/sessions/{session_id}/players/{player_id}")
 def delete_session_player(session_id: int, player_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     player = db.query(models.Player).filter(models.Player.session_id == session_id, models.Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Jogador não encontrado")
@@ -805,10 +805,10 @@ def delete_session_player(session_id: int, player_id: int, key: Optional[str] = 
 
 @app.post("/sessions/{session_id}/players")
 def add_session_player(session_id: int, req: AddPlayerRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     
     name = req.name.strip()
     if not name:
@@ -862,10 +862,10 @@ def restart_session_by_hash(public_hash: str, token: Optional[str] = None, db: S
 
 @app.post("/sessions/{session_id}/recomecar")
 def restart_session_by_id(session_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     
     new_session = restart_session(db, session_id)
     return {
@@ -877,10 +877,10 @@ def restart_session_by_id(session_id: int, key: Optional[str] = None, db: Sessio
 
 @app.post("/sessions/{session_id}/sortear")
 def draw_session_teams(session_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
     
     players = get_all_active_players(db, session_id)
     if len(players) < 8:
@@ -924,10 +924,10 @@ def draw_teams_by_hash(public_hash: str, token: Optional[str] = None, db: Sessio
 @app.post("/sessions/{session_id}/players/batch-action")
 @app.post("/sessions/{session_id}/batch-action")
 def session_batch_player_action(session_id: int, req: BatchPlayerActionRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
-    check_admin_key(key)
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    check_admin_key(key)
 
     if not req.player_ids:
         raise HTTPException(status_code=400, detail="Nenhum ID de jogador informado")
@@ -1110,6 +1110,216 @@ def api_import_whatsapp_by_hash(
         "imported_count": len(imported),
         "player_names": [p.name for p in imported]
     }
+
+
+# ====================================================================
+# GESTÃO DA PELADA (GRUPO, ELENCO PERMANENTE E MENSALIDADES)
+# ====================================================================
+
+from src.services.group_service import (
+    get_or_create_default_group,
+    get_group,
+    update_group,
+    list_members,
+    create_member,
+    update_member,
+    delete_member,
+    toggle_monthly_payment,
+    get_group_dashboard_summary,
+    import_whatsapp_roster_members
+)
+from src.services.session_service import create_group_matchday
+
+class GroupUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    frequency_type: Optional[str] = None
+    frequency_config: Optional[str] = None
+    monthly_fee: Optional[float] = None
+    per_match_fee: Optional[float] = None
+    due_day: Optional[int] = None
+    pix_key: Optional[str] = None
+
+class MemberCreateRequest(BaseModel):
+    name: str
+    member_type: Optional[str] = "mensalista"
+    is_goalkeeper: Optional[bool] = False
+    category: Optional[str] = "default"
+    phone: Optional[str] = None
+
+class MemberUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    member_type: Optional[str] = None
+    is_goalkeeper: Optional[bool] = None
+    category: Optional[str] = None
+    phone: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class MonthlyPaymentToggleRequest(BaseModel):
+    member_id: int
+    year: int
+    month: int
+    is_paid: Optional[bool] = None
+    amount: Optional[float] = None
+
+class AddMembersToSessionRequest(BaseModel):
+    member_ids: Optional[List[int]] = None
+    all_mensalistas: Optional[bool] = False
+
+@app.get("/groups/default")
+def api_get_default_group(key: Optional[str] = None, year: Optional[int] = None, month: Optional[int] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    group = get_or_create_default_group(db)
+    summary = get_group_dashboard_summary(db, group.id, year=year, month=month)
+    return summary
+
+@app.get("/groups/{group_id}")
+def api_get_group_details(group_id: int, key: Optional[str] = None, year: Optional[int] = None, month: Optional[int] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    summary = get_group_dashboard_summary(db, group_id, year=year, month=month)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Grupo/Pelada não encontrada")
+    return summary
+
+@app.put("/groups/{group_id}")
+def api_update_group_settings(group_id: int, req: GroupUpdateRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    group = update_group(
+        db,
+        group_id=group_id,
+        name=req.name,
+        frequency_type=req.frequency_type,
+        frequency_config=req.frequency_config,
+        monthly_fee=req.monthly_fee,
+        per_match_fee=req.per_match_fee,
+        due_day=req.due_day,
+        pix_key=req.pix_key
+    )
+    if not group:
+        raise HTTPException(status_code=404, detail="Grupo/Pelada não encontrada")
+    return {"message": "Configurações da pelada atualizadas com sucesso", "group_id": group.id}
+
+@app.get("/groups/{group_id}/members")
+def api_list_members(group_id: int, key: Optional[str] = None, year: Optional[int] = None, month: Optional[int] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    members = list_members(db, group_id=group_id, active_only=True, year=year, month=month)
+    return members
+
+@app.post("/groups/{group_id}/members")
+def api_create_member(group_id: int, req: MemberCreateRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    member = create_member(
+        db,
+        group_id=group_id,
+        name=req.name,
+        member_type=req.member_type or "mensalista",
+        is_goalkeeper=req.is_goalkeeper or False,
+        category=req.category or "default",
+        phone=req.phone
+    )
+    return {"message": "Membro adicionado com sucesso", "member_id": member.id}
+
+@app.put("/groups/{group_id}/members/{member_id}")
+def api_update_member(group_id: int, member_id: int, req: MemberUpdateRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    member = update_member(
+        db,
+        member_id=member_id,
+        name=req.name,
+        member_type=req.member_type,
+        is_goalkeeper=req.is_goalkeeper,
+        category=req.category,
+        phone=req.phone,
+        is_active=req.is_active
+    )
+    if not member:
+        raise HTTPException(status_code=404, detail="Membro não encontrado")
+    return {"message": "Membro atualizado com sucesso", "member_id": member.id}
+
+@app.delete("/groups/{group_id}/members/{member_id}")
+def api_delete_member(group_id: int, member_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    success = delete_member(db, member_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Membro não encontrado")
+    return {"message": "Membro desativado com sucesso"}
+
+@app.post("/groups/{group_id}/payments/toggle")
+def api_toggle_payment(group_id: int, req: MonthlyPaymentToggleRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    res = toggle_monthly_payment(
+        db,
+        group_id=group_id,
+        member_id=req.member_id,
+        year=req.year,
+        month=req.month,
+        is_paid=req.is_paid,
+        amount=req.amount
+    )
+    return res
+
+@app.post("/groups/{group_id}/matchdays/new")
+def api_create_group_matchday(group_id: int, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    new_session = create_group_matchday(db, group_id=group_id)
+    return {
+        "message": "Novo Dia de Jogo aberto com sucesso!",
+        "session_id": new_session.id,
+        "public_hash": new_session.public_hash,
+        "admin_token": new_session.admin_token,
+        "checkin_code": new_session.checkin_code
+    }
+
+@app.post("/groups/{group_id}/matchdays/{session_id}/add-members")
+def api_add_members_to_session(group_id: int, session_id: int, req: AddMembersToSessionRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+
+    target_members = []
+    if req.all_mensalistas:
+        target_members = db.query(models.Member).filter(
+            models.Member.group_id == group_id,
+            models.Member.member_type == "mensalista",
+            models.Member.is_active == True
+        ).all()
+    elif req.member_ids:
+        target_members = db.query(models.Member).filter(
+            models.Member.group_id == group_id,
+            models.Member.id.in_(req.member_ids),
+            models.Member.is_active == True
+        ).all()
+
+    added_count = 0
+    for m in target_members:
+        confirm_presence(
+            db,
+            session_id=session.id,
+            name=m.name,
+            telegram_id=m.telegram_id,
+            telegram_username=m.telegram_username,
+            category=m.category,
+            is_goalkeeper=m.is_goalkeeper
+        )
+        added_count += 1
+
+    return {"message": f"{added_count} membros adicionados à lista de presença do dia.", "added_count": added_count}
+
+class ImportRosterWhatsappRequest(BaseModel):
+    text: str
+    member_type: Optional[str] = "mensalista"
+
+@app.post("/groups/{group_id}/import-whatsapp")
+def api_import_whatsapp_roster(group_id: int, req: ImportRosterWhatsappRequest, key: Optional[str] = None, db: Session = Depends(get_db)):
+    check_admin_key(key)
+    imported = import_whatsapp_roster_members(db, group_id, req.text, req.member_type or "mensalista")
+    return {
+        "success": True,
+        "imported_count": len(imported),
+        "members": [{"id": m.id, "name": m.name, "member_type": m.member_type} for m in imported]
+    }
+
+
 
 
 

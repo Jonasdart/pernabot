@@ -411,17 +411,17 @@ Não levem convidado se a lista der mais de 15 jogadores
     data = res.json()
     assert data["success"] is True
     assert data["imported_count"] == 14
-    assert "jhimy" in data["player_names"]
-    assert "CARDOZO" in data["player_names"]
+    assert "Jhimy" in data["player_names"]
+    assert "Cardozo" in data["player_names"]
 
     # Verify players in DB
     players_res = client.get(f"/sessions/{session_id}/players")
     p_names = [p["name"] for p in players_res.json()]
-    assert "jhimy" in p_names
+    assert "Jhimy" in p_names
     assert "Alcides" in p_names
-    assert "CARDOZO" in p_names
+    assert "Cardozo" in p_names
     for p in players_res.json():
-        if p["name"] == "jhimy":
+        if p["name"] == "Jhimy":
             assert p["has_arrived"] is True
             assert p["is_paying"] is True
             assert p["is_confirmed"] is True

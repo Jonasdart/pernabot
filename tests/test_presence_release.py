@@ -45,7 +45,7 @@ async def test_presence_release_variantes(db_session):
     update.message.text = "@joao liberado"
     await handle_text(update, context)
     
-    player = db_session.query(Player).filter(Player.session_id == 1, Player.name == "joao").first()
+    player = db_session.query(Player).filter(Player.session_id == 1, Player.name == "Joao").first()
     assert player is not None
     assert player.has_arrived is True
     assert player.is_paying is False
@@ -54,8 +54,8 @@ async def test_presence_release_variantes(db_session):
     update.message.text = "fulano e ciclano liberados"
     await handle_text(update, context)
     
-    fulano = db_session.query(Player).filter(Player.session_id == 1, Player.name == "fulano").first()
-    ciclano = db_session.query(Player).filter(Player.session_id == 1, Player.name == "ciclano").first()
+    fulano = db_session.query(Player).filter(Player.session_id == 1, Player.name == "Fulano").first()
+    ciclano = db_session.query(Player).filter(Player.session_id == 1, Player.name == "Ciclano").first()
     assert fulano.has_arrived is True
     assert ciclano.has_arrived is True
 
@@ -63,9 +63,9 @@ async def test_presence_release_variantes(db_session):
     update.message.text = "mario, luigi e yoshi liberados"
     await handle_text(update, context)
 
-    mario = db_session.query(Player).filter(Player.session_id == 1, Player.name == "mario").first()
-    luigi = db_session.query(Player).filter(Player.session_id == 1, Player.name == "luigi").first()
-    yoshi = db_session.query(Player).filter(Player.session_id == 1, Player.name == "yoshi").first()
+    mario = db_session.query(Player).filter(Player.session_id == 1, Player.name == "Mario").first()
+    luigi = db_session.query(Player).filter(Player.session_id == 1, Player.name == "Luigi").first()
+    yoshi = db_session.query(Player).filter(Player.session_id == 1, Player.name == "Yoshi").first()
     assert mario.has_arrived is True
     assert luigi.has_arrived is True
     assert yoshi.has_arrived is True

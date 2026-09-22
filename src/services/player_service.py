@@ -19,24 +19,70 @@ def get_player(db: DbSession, session_id: int, name: str = None, telegram_id: in
     return query.first()
 
 def confirm_presence(db: DbSession, session_id: int, name: str, telegram_id: int = None, telegram_username: str = None, category: str = None, is_goalkeeper: bool = None):
+    from src.models.member import Member
+    from src.models.monthly_payment import MonthlyPayment
+    
+    if name:
+        name = name.strip().title()
+    
+    session = db.query(Session).filter(Session.id == session_id).first()
+    matched_member = None
+    if session and session.group_id:
+        if telegram_id:
+            matched_member = db.query(Member).filter(Member.group_id == session.group_id, Member.telegram_id == telegram_id).first()
+        if not matched_member and name:
+            matched_member = db.query(Member).filter(
+                Member.group_id == session.group_id,
+                func.lower(func.trim(Member.name)) == name.strip().lower()
+            ).first()
+
     player = get_player(db, session_id, name=name, telegram_id=telegram_id)
+    
+    # Resolver atributos padrão com base no Member se existir
+    resolved_category = category or (matched_member.category if matched_member else "default")
+    resolved_gk = is_goalkeeper if is_goalkeeper is not None else (matched_member.is_goalkeeper if matched_member else False)
+    
+    # Checar se mensalista está pago no mês atual
+    is_paying_val = False
+    if matched_member and matched_member.member_type == "mensalista":
+        now = datetime.now(timezone.utc)
+        pay = db.query(MonthlyPayment).filter(
+            MonthlyPayment.group_id == session.group_id,
+            MonthlyPayment.member_id == matched_member.id,
+            MonthlyPayment.year == now.year,
+            MonthlyPayment.month == now.month,
+            MonthlyPayment.status == "paid"
+        ).first()
+        if pay:
+            is_paying_val = True
+
     if not player:
         player = Player(
             session_id=session_id,
             name=name,
             telegram_id=telegram_id,
             telegram_username=telegram_username,
+            member_id=matched_member.id if matched_member else None,
             is_confirmed=True,
-            category=category or "default",
-            is_goalkeeper=bool(is_goalkeeper) if is_goalkeeper is not None else False
+            is_paying=is_paying_val,
+            category=resolved_category or "default",
+            is_goalkeeper=bool(resolved_gk)
         )
         db.add(player)
     else:
         player.is_confirmed = True
+        if matched_member and not player.member_id:
+            player.member_id = matched_member.id
+        if matched_member and matched_member.member_type == "mensalista" and is_paying_val:
+            player.is_paying = True
         if category:
             player.category = category
+        elif matched_member and player.category == "default":
+            player.category = matched_member.category
         if is_goalkeeper is not None:
             player.is_goalkeeper = bool(is_goalkeeper)
+        elif matched_member and matched_member.is_goalkeeper:
+            player.is_goalkeeper = True
         if telegram_id:
             player.telegram_id = telegram_id
         if telegram_username:
@@ -99,6 +145,8 @@ def cancel_presence(db: DbSession, session_id: int, name: str = None, telegram_i
 NEW_CHECKIN_AT_FRONT = True
 
 def register_arrival(db: DbSession, session_id: int, name: str = None, telegram_id: int = None, telegram_username: str = None):
+    if name:
+        name = name.strip().title()
     player = get_player(db, session_id, name=name, telegram_id=telegram_id)
     if not player:
         player = confirm_presence(db, session_id, name, telegram_id, telegram_username)
@@ -305,7 +353,7 @@ def parse_whatsapp_entries(raw_text: str) -> list:
                 candidate_lower = candidate.lower()
                 if not any(candidate_lower.startswith(kw) for kw in ignore_keywords):
                     entries.append({
-                        "name": candidate,
+                        "name": candidate.strip().title(),
                         "is_goalkeeper": is_gk,
                         "category": BALANCE_CATEGORY_KEY if is_special_cat else "default"
                     })
@@ -328,7 +376,7 @@ def import_whatsapp_presence_list(
     imported_players = []
     
     for entry in entries:
-        name = entry["name"]
+        name = entry["name"].title()
         is_gk = entry["is_goalkeeper"]
         cat = entry["category"]
         player = get_player(db, session_id, name=name)

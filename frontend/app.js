@@ -2,6 +2,9 @@ const API_BASE = window.location.origin;
 
 // DOM Elements
 const views = {
+    auth: document.getElementById('auth-view'),
+    dashboard: document.getElementById('dashboard-view'),
+    roster: document.getElementById('roster-view'),
     sessions: document.getElementById('sessions-view'),
     players: document.getElementById('players-view'),
     match: document.getElementById('match-view'),
@@ -140,6 +143,7 @@ let currentPlayers = [];
 let activeSessionId = null;
 let activeSessionDate = null;
 let activeSessionCheckinCode = null;
+let currentGroupActiveSession = null;
 let searchQuery = '';
 let paymentFilter = 'all';
 
@@ -180,13 +184,51 @@ function closeModal(el) {
     if (anyOpen.length === 0) document.body.classList.remove('modal-open');
 }
 
-function showToast(message, duration = 3000) {
+let toastTimeout = null;
+let toastHideTimeout = null;
+
+function showToast(message, duration = 3500) {
     const toast = document.getElementById('toast');
     if (!toast) return;
+
+    if (toastTimeout) {
+        clearTimeout(toastTimeout);
+        toastTimeout = null;
+    }
+    if (toastHideTimeout) {
+        clearTimeout(toastHideTimeout);
+        toastHideTimeout = null;
+    }
+
+    toast.className = 'toast';
+    const lower = message.toLowerCase();
+    if (message.includes('⚠️') || lower.includes('atenção') || lower.includes('aviso')) {
+        toast.classList.add('toast-warning');
+    } else if (message.includes('❌') || lower.includes('erro') || lower.includes('falha')) {
+        toast.classList.add('toast-error');
+    } else if (message.includes('✅') || message.includes('📥') || message.includes('⭐') || lower.includes('sucesso')) {
+        toast.classList.add('toast-success');
+    }
+
     toast.textContent = message;
     toast.classList.remove('hidden');
-    setTimeout(() => {
-        toast.classList.add('hidden');
+
+    toast.onclick = () => {
+        toast.classList.remove('show');
+        toastHideTimeout = setTimeout(() => {
+            toast.classList.add('hidden');
+        }, 280);
+    };
+
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+
+    toastTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+        toastHideTimeout = setTimeout(() => {
+            toast.classList.add('hidden');
+        }, 280);
     }, duration);
 }
 
@@ -198,10 +240,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setupCheckinListeners();
     setupImportWhatsappListeners();
 
-    backBtn.addEventListener('click', () => {
-        window.location.hash = '';
-        showView('sessions');
-    });
+    if (backBtn) {
+        backBtn.addEventListener('click', () => {
+            window.location.hash = '';
+            showView('sessions');
+        });
+    }
 
     const drawTeamsBtn = document.getElementById('draw-teams-btn');
     if (drawTeamsBtn) {
@@ -295,9 +339,28 @@ function handleRoute() {
         }
 
         loadMatchView(publicHash, adminToken);
-    } else {
-        loadSessions();
+        return;
+    }
+
+    // All management views require ADMIN_KEY
+    const adminKey = getAdminKey();
+    if (!adminKey) {
+        showView('auth');
+        setupGlobalAuthForm();
+        return;
+    }
+
+    if (hash === '#/roster') {
+        showView('roster');
+        loadRosterData();
+    } else if (hash === '#/sessions') {
         showView('sessions');
+        loadSessions();
+    } else if (hash === '#/players' || hash === '#/matchday') {
+        navigateToMatchday();
+    } else {
+        showView('dashboard');
+        loadDashboardData();
     }
 }
 
@@ -350,14 +413,107 @@ function setupSorting() {
 
 // Navigation
 function showView(viewName) {
-    Object.values(views).forEach(view => view.classList.remove('active'));
+    Object.values(views).forEach(view => {
+        if (view) view.classList.remove('active');
+    });
     if (views[viewName]) {
         views[viewName].classList.add('active');
     }
+
+    const mainNavbar = document.getElementById('main-navbar');
+    if (viewName === 'match' || viewName === 'checkin' || viewName === 'auth') {
+        if (mainNavbar) mainNavbar.classList.add('hidden');
+    } else {
+        if (mainNavbar && getAdminKey()) mainNavbar.classList.remove('hidden');
+    }
+
+    // Update navbar active link
+    document.querySelectorAll('.main-navbar .nav-link').forEach(link => {
+        const target = link.getAttribute('data-nav');
+        if (target === `${viewName}-view` || target === viewName) {
+            link.classList.add('active');
+        } else {
+            link.classList.remove('active');
+        }
+    });
 }
 
 function getAdminKey() {
     return localStorage.getItem('pelada_admin_key') || '';
+}
+
+function handleAdminUnauthorized(msg = 'Sessão expirada ou credencial inválida.') {
+    localStorage.removeItem('pelada_admin_key');
+    const mainNavbar = document.getElementById('main-navbar');
+    if (mainNavbar) mainNavbar.classList.add('hidden');
+    showView('auth');
+    const errEl = document.getElementById('global-auth-error');
+    if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+    }
+    const inputEl = document.getElementById('global-admin-key-input');
+    if (inputEl) {
+        inputEl.value = '';
+        inputEl.focus();
+    }
+    setupGlobalAuthForm();
+}
+
+function setupGlobalAuthForm() {
+    const form = document.getElementById('global-auth-form');
+    const input = document.getElementById('global-admin-key-input');
+    const submitBtn = document.getElementById('global-auth-submit-btn');
+    const errEl = document.getElementById('global-auth-error');
+
+    if (!form || form.dataset.listenerAttached) return;
+    form.dataset.listenerAttached = 'true';
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const val = input ? input.value.trim() : '';
+        if (!val) return;
+
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Validando...';
+        }
+        if (errEl) errEl.classList.add('hidden');
+
+        try {
+            const res = await fetch(`${API_BASE}/groups/default?key=${encodeURIComponent(val)}`);
+            if (res.status === 401) {
+                if (errEl) {
+                    errEl.textContent = 'Senha incorreta. Tente novamente.';
+                    errEl.classList.remove('hidden');
+                }
+                if (input) {
+                    input.value = '';
+                    input.focus();
+                }
+                return;
+            }
+            if (!res.ok) throw new Error('Erro ao conectar ao servidor');
+
+            // Success!
+            localStorage.setItem('pelada_admin_key', val);
+            const mainNav = document.getElementById('main-navbar');
+            if (mainNav) mainNav.classList.remove('hidden');
+            showToast('✅ Acesso autorizado!');
+            handleRoute();
+        } catch (err) {
+            console.error('Erro na autenticação:', err);
+            if (errEl) {
+                errEl.textContent = 'Erro ao validar senha. Verifique sua conexão.';
+                errEl.classList.remove('hidden');
+            }
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🔓 Entrar no Painel';
+            }
+        }
+    });
 }
 
 // Fetch and render sessions
@@ -467,38 +623,137 @@ function renderSessions() {
 
 // Fetch and render session details
 async function loadSessionDetails(sessionId, date) {
+    if (!sessionId) return;
     activeSessionId = sessionId;
-    activeSessionDate = date;
 
-    // Find checkin code from currentSessions if available
-    const sess = currentSessions.find(s => s.id === sessionId);
-    if (sess) {
-        activeSessionCheckinCode = sess.checkin_code || sess.public_hash;
+    let dateObj = null;
+    if (date instanceof Date && !isNaN(date.getTime())) {
+        dateObj = date;
+    } else if (typeof date === 'string' && date) {
+        const parsed = new Date(date);
+        if (!isNaN(parsed.getTime())) dateObj = parsed;
+    }
+
+    if (!dateObj && currentGroupActiveSession && currentGroupActiveSession.id === sessionId && currentGroupActiveSession.created_at) {
+        const parsed = new Date(currentGroupActiveSession.created_at);
+        if (!isNaN(parsed.getTime())) dateObj = parsed;
+    }
+
+    if (!dateObj && Array.isArray(currentSessions)) {
+        const sess = currentSessions.find(s => s.id === sessionId);
+        if (sess) {
+            activeSessionCheckinCode = sess.checkin_code || sess.public_hash;
+            if (sess.created_at) {
+                const parsed = new Date(sess.created_at);
+                if (!isNaN(parsed.getTime())) dateObj = parsed;
+            }
+        }
+    }
+
+    if (!dateObj) {
+        dateObj = new Date();
+    }
+    activeSessionDate = dateObj;
+
+    if (currentGroupActiveSession && currentGroupActiveSession.id === sessionId) {
+        activeSessionCheckinCode = currentGroupActiveSession.checkin_code || currentGroupActiveSession.public_hash;
     }
 
     showView('players');
 
-    const loadingHtml = `<tr><td colspan="6" style="text-align:center;"><div class="loader"></div></td></tr>`;
-    playersList.innerHTML = loadingHtml;
-    presenceList.innerHTML = loadingHtml;
-    paymentList.innerHTML = loadingHtml;
+    const loadingHtml = `<tr><td colspan="7" style="text-align:center;"><div class="loader"></div></td></tr>`;
+    if (playersList) playersList.innerHTML = loadingHtml;
+    if (presenceList) presenceList.innerHTML = loadingHtml;
+    if (paymentList) paymentList.innerHTML = loadingHtml;
 
-    sessionTitle.textContent = `Pelada - ${date.toLocaleDateString('pt-BR')}`;
+    if (sessionTitle) {
+        sessionTitle.textContent = `Pelada - ${dateObj.toLocaleDateString('pt-BR')}`;
+    }
 
     try {
         const adminKey = getAdminKey();
         const url = adminKey ? `${API_BASE}/sessions/${sessionId}/players?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${sessionId}/players`;
         const response = await fetch(url);
-        if (!response.ok) throw new Error('Failed to fetch players');
+
+        if (response.status === 401) {
+            renderSessionAuthForm(sessionId, dateObj);
+            return;
+        }
+
+        if (!response.ok) throw new Error(`Falha ao carregar jogadores: ${response.status}`);
 
         currentPlayers = await response.json();
         renderAllTables(currentPlayers);
     } catch (error) {
-        const errorHtml = `<tr><td colspan="6" style="color: #ef4444; text-align: center;">Erro ao carregar jogadores.</td></tr>`;
-        playersList.innerHTML = errorHtml;
-        presenceList.innerHTML = errorHtml;
-        paymentList.innerHTML = errorHtml;
-        console.error(error);
+        const errorHtml = `<tr><td colspan="7" style="color: #ef4444; text-align: center;">Erro ao carregar jogadores da sessão.</td></tr>`;
+        if (playersList) playersList.innerHTML = errorHtml;
+        if (presenceList) presenceList.innerHTML = errorHtml;
+        if (paymentList) paymentList.innerHTML = errorHtml;
+        console.error('Erro em loadSessionDetails:', error);
+    }
+}
+
+function renderSessionAuthForm(sessionId, date) {
+    const authHtml = `
+        <tr>
+            <td colspan="7" style="text-align: center; padding: 2.5rem 1rem;">
+                <div style="max-width: 360px; margin: 0 auto; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; padding: 1.8rem; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                    <div style="font-size: 2.4rem; margin-bottom: 0.5rem;">🔒</div>
+                    <h3 style="color: #ffffff; margin-bottom: 0.4rem; font-size: 1.2rem;">Acesso de Administrador</h3>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 1.2rem; line-height: 1.4;">Digite a credencial de administrador para acessar os dados deste Dia de Jogo.</p>
+                    <form id="session-auth-form" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <input type="password" id="session-admin-key-input" placeholder="Credencial / Senha" required style="padding: 0.75rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.4); color: #fff; text-align: center; outline: none; font-size: 0.95rem;">
+                        <button type="submit" class="btn primary sm" style="padding: 0.75rem; font-weight: 600;">🔓 Entrar</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+    `;
+    if (playersList) playersList.innerHTML = authHtml;
+    if (presenceList) presenceList.innerHTML = authHtml;
+    if (paymentList) paymentList.innerHTML = authHtml;
+
+    const form = document.getElementById('session-auth-form');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const val = document.getElementById('session-admin-key-input').value.trim();
+            if (val) {
+                localStorage.setItem('pelada_admin_key', val);
+                await loadSessionDetails(sessionId, date);
+            }
+        });
+    }
+}
+
+async function navigateToMatchday() {
+    showView('players');
+    if (!currentGroup || !currentGroupActiveSession) {
+        await loadDashboardData();
+    }
+
+    const activeSession = currentGroupActiveSession;
+    if (activeSession) {
+        activeSessionId = activeSession.id;
+        activeSessionCheckinCode = activeSession.checkin_code || activeSession.public_hash;
+        const date = activeSession.created_at ? new Date(activeSession.created_at) : new Date();
+        await loadSessionDetails(activeSession.id, date);
+    } else if (activeSessionId) {
+        await loadSessionDetails(activeSessionId, activeSessionDate || new Date());
+    } else {
+        if (sessionTitle) sessionTitle.textContent = '⚽ Dia de Jogo';
+        const emptyHtml = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+                    <p style="font-size: 1.15rem; color: #f1f5f9; margin-bottom: 0.5rem; font-weight: 600;">Nenhum Dia de Jogo em andamento</p>
+                    <p style="font-size: 0.85rem; margin-bottom: 1.5rem;">Inicie um novo dia de jogo para abrir a lista de presença e começar as partidas.</p>
+                    <button class="btn primary" onclick="handleOpenNewMatchday()">🚀 Iniciar Novo Dia de Jogo</button>
+                </td>
+            </tr>
+        `;
+        if (playersList) playersList.innerHTML = emptyHtml;
+        if (presenceList) presenceList.innerHTML = emptyHtml;
+        if (paymentList) paymentList.innerHTML = emptyHtml;
     }
 }
 
@@ -986,8 +1241,12 @@ async function handleLiberarPlayer(player, triggerBtn = null) {
 
     try {
         if (currentPublicHash) {
+            const adminKey = getAdminKey();
             let url = `${API_BASE}/sessions/hash/${currentPublicHash}/liberar`;
-            if (currentAdminToken) url += `?token=${encodeURIComponent(currentAdminToken)}`;
+            const params = [];
+            if (currentAdminToken) params.push(`token=${encodeURIComponent(currentAdminToken)}`);
+            if (adminKey) params.push(`key=${encodeURIComponent(adminKey)}`);
+            if (params.length > 0) url += `?${params.join('&')}`;
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1028,6 +1287,10 @@ async function handleCheckinPlayer(player, forcePay = false, triggerBtn = null) 
     if (!player || !player.id) return;
 
     if (!player.is_paying && !forcePay) {
+        if (!getAdminKey()) {
+            showToast('⚠️ Pagamento pendente! O check-in requer confirmação de pagamento pelo organizador da pelada.');
+            return;
+        }
         promptPaymentCheckin(player, () => {
             if (activeSessionId) loadSessionDetails(activeSessionId, activeSessionDate);
             if (currentPublicHash) fetchMatchData(currentPublicHash, currentAdminToken);
@@ -2277,17 +2540,6 @@ function renderPendingCheckinList(allPlayers, isAdmin) {
             checkinBtn.textContent = '📍 Chegou';
             checkinBtn.onclick = (e) => handleCheckinPlayer(p, false, e.currentTarget);
             card.querySelector('.card-action').appendChild(checkinBtn);
-
-            if (!p.is_paying) {
-                const liberarBtn = document.createElement('button');
-                liberarBtn.className = 'btn-action-sm checkin';
-                liberarBtn.style.background = 'rgba(56, 189, 248, 0.2)';
-                liberarBtn.style.color = '#38bdf8';
-                liberarBtn.style.borderColor = 'rgba(56, 189, 248, 0.4)';
-                liberarBtn.textContent = '🔓 Liberar';
-                liberarBtn.onclick = (e) => handleLiberarPlayer(p, e.currentTarget);
-                card.querySelector('.card-action').appendChild(liberarBtn);
-            }
         }
 
         pendingContainer.appendChild(card);
@@ -3053,6 +3305,37 @@ function renderQRCode(text, containerEl) {
 // WhatsApp List Import
 // ==========================================
 
+let importWppCurrentMode = 'match'; // 'match' ou 'roster'
+
+function handleOpenImportWppModal(mode = 'match') {
+    importWppCurrentMode = mode;
+    const importWppModal = document.getElementById('import-wpp-modal');
+    const importWppText = document.getElementById('import-wpp-text');
+    const titleEl = document.getElementById('import-wpp-modal-title');
+    const descEl = document.getElementById('import-wpp-modal-desc');
+    const matchOpts = document.getElementById('import-wpp-match-options');
+    const rosterOpts = document.getElementById('import-wpp-roster-options');
+
+    if (mode === 'roster') {
+        if (titleEl) titleEl.textContent = '📥 Importar Membros para o Elenco';
+        if (descEl) descEl.textContent = 'Cole a lista do WhatsApp para cadastrar os jogadores diretamente no elenco da pelada:';
+        if (matchOpts) matchOpts.classList.add('hidden');
+        if (rosterOpts) rosterOpts.classList.remove('hidden');
+    } else {
+        if (titleEl) titleEl.textContent = '📥 Importar Lista de Presença do WhatsApp';
+        if (descEl) descEl.textContent = 'Cole a mensagem copiada do WhatsApp com a lista numerada de jogadores para o dia de jogo:';
+        if (matchOpts) matchOpts.classList.remove('hidden');
+        if (rosterOpts) rosterOpts.classList.add('hidden');
+    }
+
+    if (importWppText) {
+        importWppText.value = '';
+    }
+    updateImportWppPreview('');
+    openModal(importWppModal);
+    if (importWppText) importWppText.focus();
+}
+
 function setupImportWhatsappListeners() {
     const btnImportWpp = document.getElementById('btn-import-wpp');
     const importWppModal = document.getElementById('import-wpp-modal');
@@ -3062,14 +3345,17 @@ function setupImportWhatsappListeners() {
     const submitImportWppBtn = document.getElementById('btn-submit-import-wpp');
 
     if (btnImportWpp) {
-        btnImportWpp.addEventListener('click', () => {
-            if (importWppText) {
-                importWppText.value = '';
-            }
-            updateImportWppPreview('');
-            openModal(importWppModal);
-            if (importWppText) importWppText.focus();
-        });
+        btnImportWpp.addEventListener('click', () => handleOpenImportWppModal('match'));
+    }
+
+    const btnImportRosterWpp = document.getElementById('btn-import-roster-wpp');
+    if (btnImportRosterWpp) {
+        btnImportRosterWpp.addEventListener('click', () => handleOpenImportWppModal('roster'));
+    }
+
+    const btnDashImportWpp = document.getElementById('btn-dash-import-wpp');
+    if (btnDashImportWpp) {
+        btnDashImportWpp.addEventListener('click', () => handleOpenImportWppModal('roster'));
     }
 
     if (closeImportWppBtn) {
@@ -3127,22 +3413,29 @@ function parseWhatsappTextJS(rawText) {
 }
 
 function updateImportWppPreview(text) {
-    const previewSection = document.getElementById('import-wpp-preview-section');
+    const names = parseWhatsappTextJS(text);
     const countBadge = document.getElementById('import-wpp-count-badge');
     const namesContainer = document.getElementById('import-wpp-names-container');
+    const previewSection = document.getElementById('import-wpp-preview-section');
     const submitBtn = document.getElementById('btn-submit-import-wpp');
 
-    const names = parseWhatsappTextJS(text);
+    if (countBadge) countBadge.textContent = names.length;
 
     if (names.length > 0) {
         if (previewSection) previewSection.classList.remove('hidden');
-        if (countBadge) countBadge.textContent = `${names.length} jogador(es)`;
-        if (namesContainer) {
-            namesContainer.innerHTML = names.map(n => `<span class="badge secondary" style="font-size: 0.8rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 0.25rem 0.5rem; border-radius: 6px;">👤 ${n}</span>`).join('');
-        }
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.textContent = `Confirmar Importação (${names.length} jogadores)`;
+            submitBtn.textContent = `Confirmar Importação (${names.length})`;
+        }
+
+        if (namesContainer) {
+            namesContainer.innerHTML = '';
+            names.forEach((name, idx) => {
+                const tag = document.createElement('span');
+                tag.style.cssText = 'background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #e0f2fe; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.75rem; font-weight: 500;';
+                tag.textContent = `${idx + 1}. ${name}`;
+                namesContainer.appendChild(tag);
+            });
         }
     } else {
         if (previewSection) previewSection.classList.add('hidden');
@@ -3150,6 +3443,7 @@ function updateImportWppPreview(text) {
             submitBtn.disabled = true;
             submitBtn.textContent = 'Confirmar Importação';
         }
+        if (namesContainer) namesContainer.innerHTML = '';
     }
 }
 
@@ -3163,15 +3457,49 @@ async function handleSubmitImportWpp() {
     const text = importWppText ? importWppText.value.trim() : '';
     if (!text) return;
 
-    const markArrived = checkArrived ? checkArrived.checked : false;
-    const markPaid = checkPaid ? checkPaid.checked : false;
-
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Importando...';
     }
 
     try {
+        if (importWppCurrentMode === 'roster') {
+            if (!currentGroup) await loadDashboardData();
+            const memberTypeSelect = document.getElementById('import-wpp-member-type-select');
+            const memberType = memberTypeSelect ? memberTypeSelect.value : 'mensalista';
+
+            const adminKey = getAdminKey();
+            const res = await fetch(`${API_BASE}/groups/${currentGroup.id}/import-whatsapp?key=${encodeURIComponent(adminKey)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: text,
+                    member_type: memberType
+                })
+            });
+
+            if (res.status === 401) {
+                handleAdminUnauthorized();
+                return;
+            }
+
+            if (!res.ok) {
+                const err = await res.json();
+                alert(`Erro: ${err.detail || 'Falha ao importar membros'}`);
+                return;
+            }
+
+            const data = await res.json();
+            closeModal(importWppModal);
+            showToast(`📥 ${data.imported_count} membro(s) cadastrados no elenco!`);
+            await loadRosterData();
+            await loadDashboardData();
+            return;
+        }
+
+        const markArrived = checkArrived ? checkArrived.checked : false;
+        const markPaid = checkPaid ? checkPaid.checked : false;
+
         if (activeSessionId) {
             const adminKey = getAdminKey();
             const url = adminKey ? `${API_BASE}/sessions/${activeSessionId}/import-whatsapp?key=${encodeURIComponent(adminKey)}` : `${API_BASE}/sessions/${activeSessionId}/import-whatsapp`;
@@ -3223,5 +3551,873 @@ async function handleSubmitImportWpp() {
         }
     }
 }
+
+// ==========================================================================
+// MÓDULO DE GESTÃO DA PELADA: GRUPO, ELENCO & MENSALIDADES
+// ==========================================================================
+
+let currentGroup = null;
+let currentRosterMembers = [];
+const today = new Date();
+let ledgerCurrentYear = today.getFullYear();
+let ledgerCurrentMonth = today.getMonth() + 1;
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+const MONTH_NAMES = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
+const WEEKDAY_NAMES = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+
+function formatFrequencyText(type, configStr) {
+    if (!type || type === 'weekly') {
+        try {
+            const parsed = typeof configStr === 'string' ? JSON.parse(configStr) : configStr;
+            const days = parsed.days || [1];
+            const dayNames = days.map(d => WEEKDAY_NAMES[d] || `Dia ${d}`).join(', ');
+            return `📅 Toda ${dayNames}`;
+        } catch (e) {
+            return '📅 Toda Terça-feira';
+        }
+    } else if (type === 'monthly') {
+        try {
+            const parsed = typeof configStr === 'string' ? JSON.parse(configStr) : configStr;
+            const day = parsed.day_of_month || 15;
+            return `📅 Todo dia ${day} do mês`;
+        } catch (e) {
+            return '📅 Mensal';
+        }
+    } else if (type === 'biweekly') {
+        return '📅 Quinzenal';
+    } else if (type === 'on_demand') {
+        return '📅 Sob Demanda / Avulso';
+    }
+    return '📅 Regular';
+}
+
+async function loadDashboardData() {
+    const adminKey = getAdminKey();
+    if (!adminKey) {
+        handleAdminUnauthorized();
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/groups/default?key=${encodeURIComponent(adminKey)}&year=${ledgerCurrentYear}&month=${ledgerCurrentMonth}`);
+        if (res.status === 401) {
+            handleAdminUnauthorized();
+            return;
+        }
+        if (!res.ok) throw new Error('Falha ao carregar dados da pelada');
+        const data = await res.json();
+        currentGroup = data.group;
+
+        // Atualizar Navbar
+        const navTitle = document.getElementById('nav-group-name');
+        if (navTitle && currentGroup) navTitle.textContent = currentGroup.name;
+
+        // Atualizar Hero do Dashboard
+        const dashName = document.getElementById('dash-group-name');
+        if (dashName && currentGroup) dashName.textContent = currentGroup.name;
+
+        const dashFreq = document.getElementById('dash-freq-badge');
+        if (dashFreq && currentGroup) {
+            dashFreq.textContent = formatFrequencyText(currentGroup.frequency_type, currentGroup.frequency_config);
+        }
+
+        const dashFee = document.getElementById('dash-fee-badge');
+        if (dashFee && currentGroup) {
+            dashFee.textContent = `💰 R$ ${(currentGroup.monthly_fee || 0).toFixed(2).replace('.', ',')} / mês`;
+        }
+
+        const dashDue = document.getElementById('dash-due-badge');
+        if (dashDue && currentGroup) {
+            dashDue.textContent = `🗓️ Vence dia ${currentGroup.due_day || 10}`;
+        }
+
+        // Atualizar Métricas
+        const monthName = MONTH_NAMES[data.month - 1];
+        const monthNameEl = document.getElementById('dash-metric-month-name');
+        if (monthNameEl) monthNameEl.textContent = monthName;
+
+        const totalMemEl = document.getElementById('dash-metric-total-members');
+        if (totalMemEl) totalMemEl.textContent = data.total_members || 0;
+
+        const detailEl = document.getElementById('dash-metric-types-detail');
+        if (detailEl) detailEl.textContent = `${data.total_mensalistas || 0} Mensalistas · ${data.total_avulsos || 0} Avulsos`;
+
+        const ratioEl = document.getElementById('dash-metric-paid-ratio');
+        if (ratioEl) ratioEl.textContent = `${data.paid_mensalistas_count || 0} / ${data.total_mensalistas || 0}`;
+
+        const percentVal = data.total_mensalistas > 0 ? Math.round((data.paid_mensalistas_count / data.total_mensalistas) * 100) : 0;
+        const percentEl = document.getElementById('dash-metric-paid-percent');
+        if (percentEl) percentEl.textContent = `${percentVal}% adimplentes`;
+
+        const collEl = document.getElementById('dash-metric-collected');
+        if (collEl) collEl.textContent = `R$ ${(data.total_collected || 0).toFixed(2).replace('.', ',')}`;
+
+        const expEl = document.getElementById('dash-metric-expected');
+        if (expEl) expEl.textContent = `Previsto: R$ ${(data.expected_monthly || 0).toFixed(2).replace('.', ',')}`;
+
+        const sessCountEl = document.getElementById('dash-metric-sessions-count');
+        if (sessCountEl) sessCountEl.textContent = data.total_sessions_count || 0;
+
+        // Status da Sessão Ativa
+        currentGroupActiveSession = data.active_session || null;
+        renderActiveMatchStatus(data.active_session);
+
+    } catch (e) {
+        console.error('Erro no loadDashboardData:', e);
+    }
+}
+
+function renderActiveMatchStatus(activeSession) {
+    const container = document.getElementById('dash-match-status-content');
+    if (!container) return;
+
+    if (activeSession) {
+        activeSessionId = activeSession.id;
+        currentGroupActiveSession = activeSession;
+        const dateStr = activeSession.created_at ? new Date(activeSession.created_at).toLocaleDateString('pt-BR', {
+            weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        }) : 'Sessão aberta';
+
+        container.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; background: rgba(0,210,255,0.05); border: 1px solid rgba(0,210,255,0.2); border-radius: 12px; padding: 1rem 1.2rem;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem;">
+                        <span class="badge active">🟢 Em Andamento</span>
+                        <strong style="color: #ffffff; font-size: 1.05rem;">${dateStr}</strong>
+                    </div>
+                    <p style="color: var(--text-muted); font-size: 0.85rem;">Código de check-in na quadra: <strong style="color: var(--primary);">${activeSession.checkin_code || activeSession.public_hash}</strong></p>
+                </div>
+                <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+                    <button class="btn primary sm" onclick="handleOpenActiveMatchLive('${activeSession.public_hash}', '${activeSession.admin_token}')">👁️ Quadra ao Vivo</button>
+                    <button class="btn secondary sm" onclick="handleOpenActiveMatchPlayers(${activeSession.id})">📋 Lista de Presença</button>
+                </div>
+            </div>
+        `;
+    } else {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 1.5rem; color: var(--text-muted);">
+                <p style="font-size: 1rem; margin-bottom: 0.8rem;">Nenhum Dia de Jogo ativo no momento.</p>
+                <button class="btn primary sm" onclick="handleOpenNewMatchday()">🚀 Iniciar Novo Dia de Jogo</button>
+            </div>
+        `;
+    }
+}
+
+function handleOpenActiveMatchLive(publicHash, adminToken) {
+    if (publicHash) {
+        window.location.hash = adminToken ? `#/match/${publicHash}?admin=${adminToken}` : `#/match/${publicHash}`;
+    }
+}
+
+function handleOpenActiveMatchPlayers(sessionId) {
+    activeSessionId = sessionId;
+    const date = (currentGroupActiveSession && currentGroupActiveSession.created_at)
+        ? new Date(currentGroupActiveSession.created_at)
+        : new Date();
+    window.location.hash = '#/matchday';
+    loadSessionDetails(sessionId, date);
+}
+
+async function loadRosterData() {
+    if (!currentGroup) {
+        await loadDashboardData();
+    }
+    if (!currentGroup) return;
+
+    try {
+        const adminKey = getAdminKey();
+        if (!adminKey) {
+            handleAdminUnauthorized();
+            return;
+        }
+        const res = await fetch(`${API_BASE}/groups/${currentGroup.id}/members?key=${encodeURIComponent(adminKey)}&year=${ledgerCurrentYear}&month=${ledgerCurrentMonth}`);
+        if (res.status === 401) {
+            handleAdminUnauthorized();
+            return;
+        }
+        if (!res.ok) throw new Error('Falha ao carregar elenco');
+        currentRosterMembers = await res.json();
+
+        renderRosterMembers(currentRosterMembers);
+        renderMonthlyPayments(currentRosterMembers);
+        populatePeladaConfigForm(currentGroup);
+    } catch (e) {
+        console.error('Erro ao carregar elenco:', e);
+    }
+}
+
+function renderRosterMembers(members) {
+    const listEl = document.getElementById('roster-members-list');
+    if (!listEl) return;
+
+    const searchInput = document.getElementById('roster-search-input');
+    const query = (searchInput && searchInput.value ? searchInput.value : '').toLowerCase().trim();
+    const filtered = query ? members.filter(m => m.name.toLowerCase().includes(query)) : members;
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">Nenhum membro encontrado.</td></tr>`;
+        return;
+    }
+
+    listEl.innerHTML = '';
+    filtered.forEach((m, idx) => {
+        const tr = document.createElement('tr');
+
+        const isMensalista = m.member_type === 'mensalista';
+        const typeBadge = `<span class="member-badge-type ${isMensalista ? 'mensalista' : 'avulso'}" style="cursor: pointer;" title="Clique para alternar Mensalista / Avulso" onclick="handleToggleMemberType(${m.id}, '${isMensalista ? 'avulso' : 'mensalista'}')">${isMensalista ? '⭐ Mensalista' : '🎟️ Avulso'}</span>`;
+
+        const posBadge = m.is_goalkeeper ? `<span class="badge" style="background: rgba(34,197,94,0.15); color: #4ade80;">🧤 Goleiro</span>` : `<span style="color: var(--text-muted); font-size: 0.85rem;">Linha</span>`;
+
+        const catBadge = m.category && m.category !== 'default' ? `<span class="badge" style="background: rgba(168,85,247,0.15); color: #c084fc;">${m.category}</span>` : `<span style="color: var(--text-muted); font-size: 0.85rem;">Padrão</span>`;
+
+        let payBadge = '-';
+        if (isMensalista) {
+            const isPaid = m.payment_status === 'paid';
+            payBadge = `<span class="payment-status-pill ${isPaid ? 'paid' : 'pending'}" onclick="handleTogglePayment(${m.id}, ${ledgerCurrentYear}, ${ledgerCurrentMonth}, '${m.payment_status}')" title="Clique para alternar">${isPaid ? '✅ Pago' : '⏳ Pendente'}</span>`;
+        }
+
+        tr.innerHTML = `
+            <td style="color: var(--text-muted); font-size: 0.85rem;">${idx + 1}</td>
+            <td><strong>${escapeHtml(m.name)}</strong></td>
+            <td>${typeBadge}</td>
+            <td>${posBadge}</td>
+            <td>${catBadge}</td>
+            <td>${payBadge}</td>
+            <td style="text-align: right;">
+                <button class="btn secondary sm" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="handleOpenEditMemberModal(${m.id})">✏️ Editar</button>
+                <button class="btn secondary sm danger-hover" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; margin-left: 0.3rem;" onclick="handleDeleteMember(${m.id})">🗑️</button>
+            </td>
+        `;
+        listEl.appendChild(tr);
+    });
+}
+
+function renderMonthlyPayments(members) {
+    const listEl = document.getElementById('roster-payments-list');
+    if (!listEl) return;
+
+    // Atualizar labels do mês
+    const monthName = MONTH_NAMES[ledgerCurrentMonth - 1];
+    const monthLabelEl = document.getElementById('current-ledger-month-label');
+    if (monthLabelEl) monthLabelEl.textContent = `${monthName} ${ledgerCurrentYear}`;
+
+    const summaryMonthEl = document.getElementById('ledger-summary-month-name');
+    if (summaryMonthEl) summaryMonthEl.textContent = `${monthName}/${ledgerCurrentYear}`;
+
+    const mensalistas = members.filter(m => m.member_type === 'mensalista');
+    const paidMensalistas = mensalistas.filter(m => m.payment_status === 'paid');
+    const totalCollected = paidMensalistas.reduce((acc, m) => acc + (m.paid_amount || (currentGroup ? currentGroup.monthly_fee : 50)), 0);
+
+    const paidCountEl = document.getElementById('ledger-paid-count');
+    if (paidCountEl) paidCountEl.textContent = `${paidMensalistas.length} / ${mensalistas.length}`;
+
+    const percent = mensalistas.length > 0 ? Math.round((paidMensalistas.length / mensalistas.length) * 100) : 0;
+    const percentEl = document.getElementById('ledger-percent-badge');
+    if (percentEl) percentEl.textContent = `${percent}% Pago`;
+
+    const totalBadgeEl = document.getElementById('ledger-total-badge');
+    if (totalBadgeEl) totalBadgeEl.textContent = `R$ ${totalCollected.toFixed(2).replace('.', ',')}`;
+
+    const progressFill = document.getElementById('ledger-progress-fill');
+    if (progressFill) progressFill.style.width = `${percent}%`;
+
+    if (mensalistas.length === 0) {
+        listEl.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">Nenhum mensalista cadastrado no elenco. Cadastre membros como Mensalistas para controlar a mensalidade.</td></tr>`;
+        return;
+    }
+
+    listEl.innerHTML = '';
+    mensalistas.forEach((m, idx) => {
+        const tr = document.createElement('tr');
+        const isPaid = m.payment_status === 'paid';
+        const feeVal = currentGroup ? currentGroup.monthly_fee : 50.0;
+        const dateStr = m.paid_at ? new Date(m.paid_at).toLocaleDateString('pt-BR') : '-';
+
+        tr.innerHTML = `
+            <td style="color: var(--text-muted); font-size: 0.85rem;">${idx + 1}</td>
+            <td><strong>${escapeHtml(m.name)}</strong></td>
+            <td>R$ ${feeVal.toFixed(2).replace('.', ',')}</td>
+            <td>
+                <span class="payment-status-pill ${isPaid ? 'paid' : 'pending'}" onclick="handleTogglePayment(${m.id}, ${ledgerCurrentYear}, ${ledgerCurrentMonth}, '${m.payment_status}')" title="Clique para alternar">
+                    ${isPaid ? '✅ Pago' : '⏳ Pendente'}
+                </span>
+            </td>
+            <td style="color: var(--text-muted); font-size: 0.85rem;">${dateStr}</td>
+            <td style="text-align: right;">
+                <button class="btn ${isPaid ? 'secondary sm' : 'primary sm'}" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick="handleTogglePayment(${m.id}, ${ledgerCurrentYear}, ${ledgerCurrentMonth}, '${m.payment_status}')">
+                    ${isPaid ? 'Desfazer' : 'Dar Baixa ✅'}
+                </button>
+            </td>
+        `;
+        listEl.appendChild(tr);
+    });
+}
+
+async function handleTogglePayment(memberId, year, month, currentStatus) {
+    if (!currentGroup) return;
+    const shouldPay = (currentStatus !== 'paid');
+    const adminKey = getAdminKey();
+
+    try {
+        const res = await fetch(`${API_BASE}/groups/${currentGroup.id}/payments/toggle?key=${encodeURIComponent(adminKey)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                member_id: memberId,
+                year: year,
+                month: month,
+                is_paid: shouldPay,
+                amount: currentGroup.monthly_fee || 50.0
+            })
+        });
+
+        if (res.status === 401) {
+            handleAdminUnauthorized();
+            return;
+        }
+        if (!res.ok) throw new Error('Falha ao atualizar pagamento');
+        const data = await res.json();
+        showToast(shouldPay ? '💳 Mensalidade marcada como PAGA!' : '🔄 Mensalidade desmarcada para pendente');
+        await loadRosterData();
+        await loadDashboardData();
+    } catch (e) {
+        console.error('Erro ao alternar mensalidade:', e);
+        showToast('Erro ao atualizar mensalidade.');
+    }
+}
+
+async function handleToggleMemberType(memberId, newType) {
+    const adminKey = getAdminKey();
+    try {
+        const res = await fetch(`${API_BASE}/groups/${currentGroup.id}/members/${memberId}?key=${encodeURIComponent(adminKey)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ member_type: newType })
+        });
+        if (res.status === 401) {
+            handleAdminUnauthorized();
+            return;
+        }
+        if (res.ok) {
+            showToast(`Membro alterado para ${newType === 'mensalista' ? '⭐ Mensalista' : '🎟️ Avulso'}!`);
+            await loadRosterData();
+            await loadDashboardData();
+        }
+    } catch (e) {
+        console.error('Erro ao alternar tipo de membro:', e);
+    }
+}
+
+async function handleDeleteMember(memberId) {
+    if (!confirm('Deseja desativar este membro do elenco da pelada?')) return;
+    const adminKey = getAdminKey();
+    try {
+        const res = await fetch(`${API_BASE}/groups/${currentGroup.id}/members/${memberId}?key=${encodeURIComponent(adminKey)}`, {
+            method: 'DELETE'
+        });
+        if (res.status === 401) {
+            handleAdminUnauthorized();
+            return;
+        }
+        if (res.ok) {
+            showToast('Membro removido do elenco ativo.');
+            await loadRosterData();
+            await loadDashboardData();
+        }
+    } catch (e) {
+        console.error('Erro ao deletar membro:', e);
+    }
+}
+
+function handleOpenEditMemberModal(memberId) {
+    const member = currentRosterMembers.find(m => m.id === memberId);
+    if (!member) return;
+
+    document.getElementById('member-modal-title').textContent = '✏️ Editar Membro';
+    document.getElementById('member-edit-id').value = member.id;
+    document.getElementById('member-name-input').value = member.name;
+    document.getElementById('member-type-select').value = member.member_type || 'mensalista';
+    document.getElementById('member-phone-input').value = member.phone || '';
+    document.getElementById('member-is-goalkeeper').checked = Boolean(member.is_goalkeeper);
+    document.getElementById('member-is-special').checked = (member.category === 'jovem');
+
+    openModal(document.getElementById('member-modal'));
+}
+
+function populatePeladaConfigForm(group) {
+    if (!group) return;
+    const nameInput = document.getElementById('cfg-pelada-name');
+    if (nameInput) nameInput.value = group.name || '';
+
+    const freqSelect = document.getElementById('cfg-frequency-type');
+    if (freqSelect) freqSelect.value = group.frequency_type || 'weekly';
+
+    const weeklyBox = document.getElementById('cfg-weekly-days-box');
+    const monthlyBox = document.getElementById('cfg-monthly-day-box');
+
+    if (group.frequency_type === 'monthly') {
+        if (weeklyBox) weeklyBox.classList.add('hidden');
+        if (monthlyBox) monthlyBox.classList.remove('hidden');
+        try {
+            const p = JSON.parse(group.frequency_config || '{}');
+            const dayInput = document.getElementById('cfg-month-day');
+            if (dayInput) dayInput.value = p.day_of_month || 15;
+        } catch (e) {}
+    } else {
+        if (weeklyBox) weeklyBox.classList.remove('hidden');
+        if (monthlyBox) monthlyBox.classList.add('hidden');
+        try {
+            const p = JSON.parse(group.frequency_config || '{}');
+            const days = p.days || [1];
+            document.querySelectorAll('input[name="cfg-day"]').forEach(cb => {
+                cb.checked = days.includes(parseInt(cb.value));
+            });
+        } catch (e) {}
+    }
+
+    const feeInput = document.getElementById('cfg-monthly-fee');
+    if (feeInput) feeInput.value = (group.monthly_fee || 50.0).toFixed(2);
+
+    const matchFeeInput = document.getElementById('cfg-match-fee');
+    if (matchFeeInput) matchFeeInput.value = (group.per_match_fee || 15.0).toFixed(2);
+
+    const dueDayInput = document.getElementById('cfg-due-day');
+    if (dueDayInput) dueDayInput.value = group.due_day || 10;
+
+    const pixInput = document.getElementById('cfg-pix-key');
+    if (pixInput) pixInput.value = group.pix_key || '';
+}
+
+async function handleSavePeladaConfig() {
+    if (!currentGroup) return;
+
+    const name = document.getElementById('cfg-pelada-name').value.trim();
+    const frequencyType = document.getElementById('cfg-frequency-type').value;
+
+    let frequencyConfig = '{"days": [1]}';
+    if (frequencyType === 'weekly') {
+        const selectedDays = [];
+        document.querySelectorAll('input[name="cfg-day"]:checked').forEach(cb => {
+            selectedDays.push(parseInt(cb.value));
+        });
+        frequencyConfig = JSON.stringify({ days: selectedDays.length ? selectedDays : [1] });
+    } else if (frequencyType === 'monthly') {
+        const dayVal = parseInt(document.getElementById('cfg-month-day').value) || 15;
+        frequencyConfig = JSON.stringify({ day_of_month: dayVal });
+    }
+
+    const monthlyFee = parseFloat(document.getElementById('cfg-monthly-fee').value) || 50.0;
+    const perMatchFee = parseFloat(document.getElementById('cfg-match-fee').value) || 15.0;
+    const dueDay = parseInt(document.getElementById('cfg-due-day').value) || 10;
+    const pixKey = document.getElementById('cfg-pix-key').value.trim();
+    const adminKey = getAdminKey();
+
+    try {
+        const res = await fetch(`${API_BASE}/groups/${currentGroup.id}?key=${encodeURIComponent(adminKey)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                frequency_type: frequencyType,
+                frequency_config: frequencyConfig,
+                monthly_fee: monthlyFee,
+                per_match_fee: perMatchFee,
+                due_day: dueDay,
+                pix_key: pixKey
+            })
+        });
+
+        if (res.status === 401) {
+            handleAdminUnauthorized();
+            return;
+        }
+        if (!res.ok) throw new Error('Falha ao salvar configurações');
+        showToast('⚙️ Configurações da pelada salvas com sucesso!');
+        await loadDashboardData();
+    } catch (e) {
+        console.error('Erro ao salvar config:', e);
+        showToast('Erro ao salvar configurações.');
+    }
+}
+
+async function handleOpenNewMatchday() {
+    if (!currentGroup) await loadDashboardData();
+    if (!currentGroup) return;
+
+    const confirmMsg = "Deseja abrir um NOVO Dia Oficial de Jogo para a pelada?\n\nA pelada anterior será arquivada e o novo dia começará limpo, mantendo todos os membros e configurações intactos.";
+    if (!confirm(confirmMsg)) return;
+
+    const adminKey = getAdminKey();
+    try {
+        const res = await fetch(`${API_BASE}/groups/${currentGroup.id}/matchdays/new?key=${encodeURIComponent(adminKey)}`, {
+            method: 'POST'
+        });
+
+        if (res.status === 401) {
+            handleAdminUnauthorized();
+            return;
+        }
+        if (!res.ok) throw new Error('Falha ao criar novo dia de jogo');
+        const data = await res.json();
+        showToast('🚀 Novo Dia de Jogo aberto com sucesso!');
+
+        activeSessionId = data.session_id;
+        window.location.hash = `#/match/${data.public_hash}?admin=${data.admin_token}`;
+        await loadDashboardData();
+    } catch (e) {
+        console.error('Erro ao abrir novo dia:', e);
+        showToast('Erro ao abrir novo dia de jogo.');
+    }
+}
+
+async function handleAddMensalistasToMatchday() {
+    if (!currentGroup) await loadDashboardData();
+    if (!currentGroup || !activeSessionId) {
+        showToast('Nenhum dia de jogo ativo selecionado.');
+        return;
+    }
+
+    const adminKey = getAdminKey();
+    try {
+        const res = await fetch(`${API_BASE}/groups/${currentGroup.id}/matchdays/${activeSessionId}/add-members?key=${encodeURIComponent(adminKey)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ all_mensalistas: true })
+        });
+
+        if (res.status === 401) {
+            handleAdminUnauthorized();
+            return;
+        }
+        if (!res.ok) throw new Error('Falha ao importar mensalistas');
+        const data = await res.json();
+        showToast(`⭐ ${data.added_count} mensalista(s) adicionados à presença!`);
+        await loadSessionDetails(activeSessionId, activeSessionDate);
+    } catch (e) {
+        console.error('Erro ao adicionar mensalistas:', e);
+        showToast('Erro ao importar mensalistas.');
+    }
+}
+
+function handleCopyPaymentLedger() {
+    if (!currentGroup || !currentRosterMembers) return;
+    const monthName = MONTH_NAMES[ledgerCurrentMonth - 1];
+    const mensalistas = currentRosterMembers.filter(m => m.member_type === 'mensalista');
+    const paid = mensalistas.filter(m => m.payment_status === 'paid');
+    const pending = mensalistas.filter(m => m.payment_status !== 'paid');
+
+    let text = `⚽ *MENSALIDADE PELADA - ${currentGroup.name.toUpperCase()}*\n`;
+    text += `📅 Referência: *${monthName}/${ledgerCurrentYear}*\n`;
+    text += `💵 Valor: *R$ ${(currentGroup.monthly_fee || 50).toFixed(2).replace('.', ',')}*\n`;
+    text += `🗓️ Vencimento: *Dia ${currentGroup.due_day || 10}*\n\n`;
+
+    text += `✅ *PAGOS (${paid.length}/${mensalistas.length}):*\n`;
+    if (paid.length === 0) {
+        text += `_Nenhum pagamento registrado ainda_\n`;
+    } else {
+        paid.forEach((m, i) => {
+            text += `${i + 1}. ${m.name} 👍\n`;
+        });
+    }
+
+    text += `\n⏳ *PENDENTES (${pending.length}):*\n`;
+    if (pending.length === 0) {
+        text += `_Todos os mensalistas estão em dia! 🚀_\n`;
+    } else {
+        pending.forEach((m, i) => {
+            text += `${i + 1}. ${m.name}\n`;
+        });
+    }
+
+    if (currentGroup.pix_key) {
+        text += `\n🔑 *CHAVE PIX:*\n\`${currentGroup.pix_key}\`\n`;
+    }
+
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('📋 Lista de cobrança copiada para o WhatsApp!');
+    }).catch(() => {
+        promptFallbackCopy(text, '📋 Lista de cobrança copiada!');
+    });
+}
+
+function setupRosterAndDashboardListeners() {
+    // Navbar links
+    document.querySelectorAll('.main-navbar .nav-link').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetNav = btn.getAttribute('data-nav');
+            if (targetNav === 'dashboard-view') {
+                window.location.hash = '#/dashboard';
+            } else if (targetNav === 'roster-view') {
+                window.location.hash = '#/roster';
+            } else if (targetNav === 'players-view') {
+                window.location.hash = '#/matchday';
+            } else if (targetNav === 'sessions-view') {
+                window.location.hash = '#/sessions';
+            }
+        });
+    });
+
+    const btnLogout = document.getElementById('nav-btn-logout');
+    if (btnLogout) {
+        btnLogout.addEventListener('click', () => {
+            if (confirm('Deseja sair da área administrativa da pelada?')) {
+                localStorage.removeItem('pelada_admin_key');
+                const navbar = document.getElementById('main-navbar');
+                if (navbar) navbar.classList.add('hidden');
+                showToast('Você saiu da gestão.');
+                showView('auth-view');
+            }
+        });
+    }
+
+    // Dashboard quick action buttons
+    const btnDashNew = document.getElementById('btn-dash-new-matchday');
+    if (btnDashNew) btnDashNew.addEventListener('click', handleOpenNewMatchday);
+
+    const btnDashMatch = document.getElementById('btn-dash-goto-match');
+    if (btnDashMatch) {
+        btnDashMatch.addEventListener('click', () => {
+            if (currentPublicHash) {
+                window.location.hash = currentAdminToken ? `#/match/${currentPublicHash}?admin=${currentAdminToken}` : `#/match/${currentPublicHash}`;
+            } else {
+                handleOpenNewMatchday();
+            }
+        });
+    }
+
+    const btnDashRoster = document.getElementById('btn-dash-manage-roster');
+    if (btnDashRoster) btnDashRoster.addEventListener('click', () => { window.location.hash = '#/roster'; });
+
+    const btnDashPay = document.getElementById('btn-dash-manage-payments');
+    if (btnDashPay) {
+        btnDashPay.addEventListener('click', () => {
+            window.location.hash = '#/roster';
+            const payTabBtn = document.querySelector('[data-roster-tab="tab-roster-payments"]');
+            if (payTabBtn) payTabBtn.click();
+        });
+    }
+
+    const btnDashPix = document.getElementById('btn-dash-copy-pix');
+    if (btnDashPix) {
+        btnDashPix.addEventListener('click', () => {
+            if (currentGroup && currentGroup.pix_key) {
+                navigator.clipboard.writeText(currentGroup.pix_key);
+                showToast(`🔑 Chave PIX copiada: ${currentGroup.pix_key}`);
+            } else {
+                showToast('Nenhuma chave PIX configurada nas opções da pelada.');
+            }
+        });
+    }
+
+    const btnDashMatchHub = document.getElementById('btn-dash-open-matchday-hub');
+    if (btnDashMatchHub) {
+        btnDashMatchHub.addEventListener('click', () => {
+            window.location.hash = '#/matchday';
+        });
+    }
+
+    // Botão Adicionar Mensalistas à Presença no Dia de Jogo
+    const btnAddMensalistas = document.getElementById('btn-add-mensalistas-to-match');
+    if (btnAddMensalistas) btnAddMensalistas.addEventListener('click', handleAddMensalistasToMatchday);
+
+    // Roster sub-tabs navigation
+    document.querySelectorAll('[data-roster-tab]').forEach(tabBtn => {
+        tabBtn.addEventListener('click', () => {
+            document.querySelectorAll('[data-roster-tab]').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#roster-view .tab-content').forEach(c => c.classList.remove('active'));
+
+            tabBtn.classList.add('active');
+            const target = document.getElementById(tabBtn.getAttribute('data-roster-tab'));
+            if (target) target.classList.add('active');
+        });
+    });
+
+    // Month picker buttons in Monthly Payments Ledger
+    const btnPrevMonth = document.getElementById('btn-prev-month');
+    if (btnPrevMonth) {
+        btnPrevMonth.addEventListener('click', () => {
+            ledgerCurrentMonth--;
+            if (ledgerCurrentMonth < 1) {
+                ledgerCurrentMonth = 12;
+                ledgerCurrentYear--;
+            }
+            loadRosterData();
+        });
+    }
+
+    const btnNextMonth = document.getElementById('btn-next-month');
+    if (btnNextMonth) {
+        btnNextMonth.addEventListener('click', () => {
+            ledgerCurrentMonth++;
+            if (ledgerCurrentMonth > 12) {
+                ledgerCurrentMonth = 1;
+                ledgerCurrentYear++;
+            }
+            loadRosterData();
+        });
+    }
+
+    // Copy ledger button
+    const btnCopyLedger = document.getElementById('btn-copy-payment-ledger');
+    if (btnCopyLedger) btnCopyLedger.addEventListener('click', handleCopyPaymentLedger);
+
+    // Member search filter
+    const rosterSearchInput = document.getElementById('roster-search-input');
+    if (rosterSearchInput) {
+        rosterSearchInput.addEventListener('input', () => {
+            renderRosterMembers(currentRosterMembers);
+        });
+    }
+
+    // Frequency Selector type change (weekly / monthly / on_demand)
+    const freqSelect = document.getElementById('cfg-frequency-type');
+    if (freqSelect) {
+        freqSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            const weeklyBox = document.getElementById('cfg-weekly-days-box');
+            const monthlyBox = document.getElementById('cfg-monthly-day-box');
+            if (val === 'weekly') {
+                if (weeklyBox) weeklyBox.classList.remove('hidden');
+                if (monthlyBox) monthlyBox.classList.add('hidden');
+            } else if (val === 'monthly') {
+                if (weeklyBox) weeklyBox.classList.add('hidden');
+                if (monthlyBox) monthlyBox.classList.remove('hidden');
+            } else {
+                if (weeklyBox) weeklyBox.classList.add('hidden');
+                if (monthlyBox) monthlyBox.classList.add('hidden');
+            }
+        });
+    }
+
+    // Save pelada config button
+    const btnSaveConfig = document.getElementById('btn-save-pelada-config');
+    if (btnSaveConfig) btnSaveConfig.addEventListener('click', handleSavePeladaConfig);
+
+    // Member Modal handlers
+    const btnNewMember = document.getElementById('btn-new-member');
+    const memberModal = document.getElementById('member-modal');
+    const closeMemberModalBtn = document.getElementById('close-member-modal-btn');
+    const btnCancelMember = document.getElementById('btn-cancel-member');
+    const memberForm = document.getElementById('member-form');
+
+    if (btnNewMember && memberModal) {
+        btnNewMember.addEventListener('click', () => {
+            document.getElementById('member-modal-title').textContent = '➕ Adicionar Membro';
+            document.getElementById('member-edit-id').value = '';
+            document.getElementById('member-name-input').value = '';
+            document.getElementById('member-type-select').value = 'mensalista';
+            document.getElementById('member-phone-input').value = '';
+            document.getElementById('member-is-goalkeeper').checked = false;
+            document.getElementById('member-is-special').checked = false;
+            openModal(memberModal);
+        });
+    }
+
+    if (closeMemberModalBtn && memberModal) {
+        closeMemberModalBtn.addEventListener('click', () => closeModal(memberModal));
+    }
+    if (btnCancelMember && memberModal) {
+        btnCancelMember.addEventListener('click', () => closeModal(memberModal));
+    }
+
+    if (memberForm) {
+        memberForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentGroup) return;
+
+            const editId = document.getElementById('member-edit-id').value;
+            const name = document.getElementById('member-name-input').value.trim();
+            const memberType = document.getElementById('member-type-select').value;
+            const phone = document.getElementById('member-phone-input').value.trim();
+            const isGk = document.getElementById('member-is-goalkeeper').checked;
+            const isSpecial = document.getElementById('member-is-special').checked;
+            const category = isSpecial ? 'jovem' : 'default';
+
+            if (!name) return;
+
+            const adminKey = getAdminKey();
+            if (!adminKey) {
+                handleAdminUnauthorized();
+                return;
+            }
+
+            try {
+                if (editId) {
+                    const res = await fetch(`${API_BASE}/groups/${currentGroup.id}/members/${editId}?key=${encodeURIComponent(adminKey)}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: name,
+                            member_type: memberType,
+                            is_goalkeeper: isGk,
+                            category: category,
+                            phone: phone
+                        })
+                    });
+                    if (res.status === 401) {
+                        handleAdminUnauthorized();
+                        return;
+                    }
+                    if (!res.ok) throw new Error('Falha ao atualizar membro');
+                    showToast('Membro atualizado com sucesso!');
+                } else {
+                    const res = await fetch(`${API_BASE}/groups/${currentGroup.id}/members?key=${encodeURIComponent(adminKey)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: name,
+                            member_type: memberType,
+                            is_goalkeeper: isGk,
+                            category: category,
+                            phone: phone
+                        })
+                    });
+                    if (res.status === 401) {
+                        handleAdminUnauthorized();
+                        return;
+                    }
+                    if (!res.ok) throw new Error('Falha ao criar membro');
+                    showToast('Novo membro adicionado ao elenco!');
+                }
+                closeModal(memberModal);
+                await loadRosterData();
+                await loadDashboardData();
+            } catch (err) {
+                console.error('Erro ao salvar membro:', err);
+                showToast('Erro ao salvar dados do membro.');
+            }
+        });
+    }
+}
+
+// Inicializar listeners do Dashboard e Elenco
+document.addEventListener('DOMContentLoaded', () => {
+    setupRosterAndDashboardListeners();
+});
+
+// Expor handlers chamados via onclick dinâmico no window
+window.handleToggleMemberType = handleToggleMemberType;
+window.handleTogglePayment = handleTogglePayment;
+window.handleOpenEditMemberModal = handleOpenEditMemberModal;
+window.handleDeleteMember = handleDeleteMember;
+window.handleOpenActiveMatchLive = handleOpenActiveMatchLive;
+window.handleOpenActiveMatchPlayers = handleOpenActiveMatchPlayers;
+window.handleOpenNewMatchday = handleOpenNewMatchday;
+window.escapeHtml = escapeHtml;
+
+
 
 
