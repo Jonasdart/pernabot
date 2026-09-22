@@ -7,91 +7,151 @@ TOTAL_PLAYERS_IN_COURT = PLAYERS_PER_TEAM * 2
 
 from src.config import BALANCE_RULE_ENABLED, BALANCE_MAX_PER_TEAM, GOALKEEPERS_PER_TEAM
 
-def draw_teams(active_players: List[Player]):
+def player_draw_priority_key(player: Player):
     """
-    Randomizes all players to form Teams 1, 2, 3...
-    Distributes Goalkeepers (1 per team) and Field players (4 per team).
-    Respects category balance for field players (e.g. Jovens <= 1 per team).
+    Priority key for drawing teams:
+    1. is_paying: Pagantes (True) = 0, Liberados (False) = 1.
+    2. arrival_order: earlier arrival = smaller number (1, 2, 3...). If None or 0, treated as late (999999).
+    3. list_order: player.id (order of registration/confirmation on presence list).
     """
-    import random
-    
-    gks = [p for p in active_players if getattr(p, 'is_goalkeeper', False)]
-    field_players = [p for p in active_players if not getattr(p, 'is_goalkeeper', False)]
-    
-    # 1. Distribute Goalkeepers (1 for Team 1, 1 for Team 2, rest wait)
-    random.shuffle(gks)
-    for idx, gk in enumerate(gks):
-        gk.initial_draw_order = idx + 1
-        if idx == 0:
-            gk.is_playing = True
-            gk.team_slot = 1
-            gk.cycles_in_court = 1
-            gk.cycles_waiting = 0
-            gk.draw_weight = random.uniform(0, 100)
-        elif idx == 1:
-            gk.is_playing = True
-            gk.team_slot = 2
-            gk.cycles_in_court = 1
-            gk.cycles_waiting = 0
-            gk.draw_weight = random.uniform(0, 100)
-        else:
-            gk.is_playing = False
-            gk.team_slot = 0
-            gk.cycles_waiting = 1
-            gk.cycles_in_court = 0
+    pay_rank = 0 if getattr(player, 'is_paying', False) else 1
+    arrival = player.arrival_order if (getattr(player, 'arrival_order', None) and player.arrival_order > 0) else 999999
+    list_order = getattr(player, 'id', None) or 999999
+    return (pay_rank, arrival, list_order)
 
-    # 2. Distribute Field Players
+
+def _distribute_pool_to_buckets(pool: List[Player], num_buckets: int, max_per_bucket: int = PLAYERS_PER_TEAM) -> List[List[Player]]:
+    """
+    Distributes a pool of players across num_buckets using a balanced random draw.
+    Respects BALANCE_MAX_PER_TEAM for special category players, and shuffles inside each bucket.
+    """
+    buckets = [[] for _ in range(num_buckets)]
+    if not pool:
+        return buckets
+
     if BALANCE_RULE_ENABLED:
-        special_players = [p for p in field_players if getattr(p, 'is_special_category', False)]
-        regular_players = [p for p in field_players if not getattr(p, 'is_special_category', False)]
+        special_players = [p for p in pool if getattr(p, 'is_special_category', False)]
+        regular_players = [p for p in pool if not getattr(p, 'is_special_category', False)]
         random.shuffle(special_players)
         random.shuffle(regular_players)
 
-        num_teams = max(2, (len(field_players) + PLAYERS_PER_TEAM - 1) // PLAYERS_PER_TEAM)
-        team_buckets = [[] for _ in range(num_teams)]
-
-        # Distribute special players across buckets (at most BALANCE_MAX_PER_TEAM per bucket while possible)
-        b_idx = 0
+        b_idx = random.randint(0, num_buckets - 1) if num_buckets > 0 else 0
         for sp in special_players:
             assigned = False
-            for attempt in range(num_teams):
-                curr = (b_idx + attempt) % num_teams
-                spec_in_bucket = sum(1 for p in team_buckets[curr] if getattr(p, 'is_special_category', False))
-                if spec_in_bucket < BALANCE_MAX_PER_TEAM and len(team_buckets[curr]) < PLAYERS_PER_TEAM:
-                    team_buckets[curr].append(sp)
-                    b_idx = curr + 1
+            for attempt in range(num_buckets):
+                curr = (b_idx + attempt) % num_buckets
+                spec_in_bucket = sum(1 for p in buckets[curr] if getattr(p, 'is_special_category', False))
+                if spec_in_bucket < BALANCE_MAX_PER_TEAM and len(buckets[curr]) < max_per_bucket:
+                    buckets[curr].append(sp)
+                    b_idx = (curr + 1) % num_buckets
                     assigned = True
                     break
             if not assigned:
-                min_bucket = min(team_buckets, key=lambda b: (sum(1 for p in b if getattr(p, 'is_special_category', False)), len(b)))
+                min_bucket = min(buckets, key=lambda b: (sum(1 for p in b if getattr(p, 'is_special_category', False)), len(b)))
                 min_bucket.append(sp)
 
-        # Fill buckets with regular players
         for rp in regular_players:
-            for bucket in team_buckets:
-                if len(bucket) < PLAYERS_PER_TEAM:
+            for bucket in buckets:
+                if len(bucket) < max_per_bucket:
                     bucket.append(rp)
                     break
             else:
-                team_buckets[-1].append(rp)
-
-        shuffled = []
-        for bucket in team_buckets:
-            random.shuffle(bucket)
-            shuffled.extend(bucket)
+                buckets[-1].append(rp)
     else:
-        shuffled = field_players[:]
+        shuffled = pool[:]
         random.shuffle(shuffled)
-    
+        for p in shuffled:
+            for bucket in buckets:
+                if len(bucket) < max_per_bucket:
+                    bucket.append(p)
+                    break
+            else:
+                buckets[-1].append(p)
+
+    for b in buckets:
+        random.shuffle(b)
+
+    return buckets
+
+
+def draw_teams(active_players: List[Player]):
+    """
+    Draws teams prioritizing paying status, arrival order, and presence list order.
+    - Goalkeepers: Top 2 by priority play in Match 1 (randomly coin-flipped between Team 1 and 2), rest wait in GK queue.
+    - Outfield (Field) players:
+      - Top 8 players by priority are selected for Match 1 (distributed by balanced random draw between Team 1 and Team 2).
+      - Remaining players form the waiting queue in priority tiers, with anti-clique random draw within waiting tiers
+        so players arriving together don't form fixed cliques.
+    """
+    gks = [p for p in active_players if getattr(p, 'is_goalkeeper', False)]
+    field_players = [p for p in active_players if not getattr(p, 'is_goalkeeper', False)]
+
+    # 1. Distribute Goalkeepers (1 for Team 1, 1 for Team 2, rest wait)
+    # Sorted by priority: pagantes first, then arrival_order, then list_order
+    sorted_gks = sorted(gks, key=player_draw_priority_key)
+    court_gks = sorted_gks[:2]
+    random.shuffle(court_gks)
+
+    if court_gks:
+        for idx, gk in enumerate(court_gks):
+            gk.initial_draw_order = idx + 1
+            gk.is_playing = True
+            gk.team_slot = idx + 1
+            gk.cycles_in_court = 1
+            gk.cycles_waiting = 0
+            gk.draw_weight = random.uniform(0, 100)
+
+    for idx, gk in enumerate(sorted_gks[2:], start=len(court_gks)):
+        gk.initial_draw_order = idx + 1
+        gk.is_playing = False
+        gk.team_slot = 0
+        gk.cycles_waiting = 1
+        gk.cycles_in_court = 0
+
+    # 2. Distribute Field Players
+    sorted_field = sorted(field_players, key=player_draw_priority_key)
+
+    court_pool = sorted_field[:TOTAL_PLAYERS_IN_COURT]
+    waiting_pool = sorted_field[TOTAL_PLAYERS_IN_COURT:]
+
+    # Tier 1 (Match 1): Distribute court_pool between Team 1 and Team 2
+    num_court_teams = min(2, max(1, (len(court_pool) + PLAYERS_PER_TEAM - 1) // PLAYERS_PER_TEAM))
+    court_buckets = _distribute_pool_to_buckets(court_pool, num_buckets=num_court_teams, max_per_bucket=PLAYERS_PER_TEAM)
+
+    # Tier 2 (Waiting Pool): Anti-panela draw across waiting teams
+    waiting_buckets = []
+    if waiting_pool:
+        wait_paying = [p for p in waiting_pool if getattr(p, 'is_paying', False)]
+        wait_liberados = [p for p in waiting_pool if not getattr(p, 'is_paying', False)]
+
+        for sub_pool in [wait_paying, wait_liberados]:
+            if not sub_pool:
+                continue
+            sub_teams_count = max(1, (len(sub_pool) + PLAYERS_PER_TEAM - 1) // PLAYERS_PER_TEAM)
+            sub_buckets = _distribute_pool_to_buckets(sub_pool, num_buckets=sub_teams_count, max_per_bucket=PLAYERS_PER_TEAM)
+            waiting_buckets.extend(sub_buckets)
+
+    all_buckets = court_buckets + waiting_buckets
+    shuffled = []
+    for bucket in all_buckets:
+        shuffled.extend(bucket)
+
     for idx, player in enumerate(shuffled):
-        # Assign initial_draw_order so they form contiguous teams in the queue
         player.initial_draw_order = idx + 1
-        
-        if idx < TOTAL_PLAYERS_IN_COURT:
+
+        is_court = False
+        team_idx = 0
+        for b_i, bucket in enumerate(court_buckets):
+            if player in bucket:
+                is_court = True
+                team_idx = b_i + 1
+                break
+
+        if is_court:
             player.is_playing = True
             player.cycles_in_court = 1
             player.cycles_waiting = 0
-            player.team_slot = 1 if idx < PLAYERS_PER_TEAM else 2
+            player.team_slot = team_idx
             player.draw_weight = random.uniform(0, 100)
         else:
             player.is_playing = False
@@ -111,13 +171,20 @@ def sort_leaving_players(playing_players: List[Player]) -> List[Player]:
 
 def sort_entering_players(waiting_players: List[Player]) -> List[Player]:
     """
-    Order: cycles_waiting DESC, matches_played ASC, initial_draw_order ASC, arrival_order ASC
+    Order: cycles_waiting DESC, matches_played ASC, pay_rank ASC, initial_draw_order ASC, arrival_order ASC
     A player who arrives late can only take priority over waiting players if those waiting have already played at least 1 match.
     Among players with the same number of matches played and cycle status, earlier arrivals take precedence (FIFO).
+    Paying players (is_paying=True) take priority over non-paying/liberados (is_paying=False).
     """
     return sorted(
         waiting_players,
-        key=lambda p: (-(p.cycles_waiting or 0), p.matches_played or 0, p.initial_draw_order or 9999, p.arrival_order or 0)
+        key=lambda p: (
+            -(p.cycles_waiting or 0),
+            p.matches_played or 0,
+            0 if getattr(p, 'is_paying', False) else 1,
+            p.initial_draw_order or 9999,
+            p.arrival_order or 0
+        )
     )
 
 def pick_entering_quartet(waiting_players: List[Player], max_special: int = 1) -> List[Player]:

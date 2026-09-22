@@ -34,6 +34,16 @@ def run_auto_migrations():
                             text("UPDATE sessions SET checkin_code = :code WHERE id = :id"),
                             {"code": code, "id": s_id}
                         )
+
+            # Check if players table exists and has category & is_goalkeeper
+            players_check = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='players'")).fetchone()
+            if players_check:
+                result = conn.execute(text("PRAGMA table_info(players)")).fetchall()
+                col_names = [row[1] for row in result]
+                if "category" not in col_names:
+                    conn.execute(text("ALTER TABLE players ADD COLUMN category VARCHAR DEFAULT 'default'"))
+                if "is_goalkeeper" not in col_names:
+                    conn.execute(text("ALTER TABLE players ADD COLUMN is_goalkeeper BOOLEAN DEFAULT 0"))
     except Exception as e:
         print(f"Auto-migration notice: {e}")
 

@@ -235,4 +235,203 @@ def test_draw_with_four_teams_rotation_and_quartet_integrity():
            (first_quartet_in_queue == team2_ids and second_quartet_in_queue == team1_ids)
 
 
+def test_draw_teams_liberado_loses_priority_to_paying():
+    """
+    Ensures players marked as 'liberado' (is_paying=False) lose priority
+    to paying players (is_paying=True) even if the liberado arrived earlier.
+    """
+    players = []
+    # 2 Liberados who arrived early (#1 and #2)
+    for i in range(1, 3):
+        players.append(Player(
+            id=i,
+            session_id=1,
+            name=f"Liberado Cedo {i}",
+            is_confirmed=True,
+            has_arrived=True,
+            is_paying=False,
+            arrival_order=i
+        ))
+
+    # 8 Pagantes who arrived later (#3 to #10)
+    for i in range(3, 11):
+        players.append(Player(
+            id=i,
+            session_id=1,
+            name=f"Pagante Tarde {i}",
+            is_confirmed=True,
+            has_arrived=True,
+            is_paying=True,
+            arrival_order=i
+        ))
+
+    draw_teams(players)
+
+    playing = [p for p in players if p.is_playing]
+    waiting = [p for p in players if not p.is_playing]
+
+    assert len(playing) == 8
+    assert len(waiting) == 2
+
+    # All 8 playing players MUST be pagantes
+    for p in playing:
+        assert p.is_paying is True, f"Player {p.name} should be playing because they paid"
+
+    # Both waiting players MUST be the liberados who lost priority
+    for p in waiting:
+        assert p.is_paying is False, f"Player {p.name} should be in queue because they are liberado"
+
+
+def test_draw_teams_arrival_order_priority_among_paying():
+    """
+    Ensures that among paying players, those who arrived earlier take priority for the court.
+    """
+    players = []
+    # 10 Pagantes with arrival_order 1 to 10
+    for i in range(1, 11):
+        players.append(Player(
+            id=i,
+            session_id=1,
+            name=f"Pagante {i}",
+            is_confirmed=True,
+            has_arrived=True,
+            is_paying=True,
+            arrival_order=i
+        ))
+
+    draw_teams(players)
+
+    playing = [p for p in players if p.is_playing]
+    waiting = [p for p in players if not p.is_playing]
+
+    playing_orders = {p.arrival_order for p in playing}
+    waiting_orders = {p.arrival_order for p in waiting}
+
+    assert playing_orders == {1, 2, 3, 4, 5, 6, 7, 8}
+    assert waiting_orders == {9, 10}
+
+
+def test_draw_teams_presence_list_tiebreaker():
+    """
+    Ensures that when arrival_order is tied (e.g. batch checkin),
+    the presence list order (id) breaks the tie.
+    """
+    players = []
+    # 10 Pagantes all with arrival_order=1 (e.g. bulk checkin)
+    for i in range(1, 11):
+        players.append(Player(
+            id=i,
+            session_id=1,
+            name=f"Pagante Lista {i}",
+            is_confirmed=True,
+            has_arrived=True,
+            is_paying=True,
+            arrival_order=1
+        ))
+
+    draw_teams(players)
+
+    playing = [p for p in players if p.is_playing]
+    waiting = [p for p in players if not p.is_playing]
+
+    playing_ids = {p.id for p in playing}
+    waiting_ids = {p.id for p in waiting}
+
+    # IDs 1 to 8 should be playing, IDs 9 and 10 waiting
+    assert playing_ids == {1, 2, 3, 4, 5, 6, 7, 8}
+    assert waiting_ids == {9, 10}
+
+
+def test_draw_teams_goalkeeper_paying_priority():
+    """
+    Ensures paying goalkeepers take priority over non-paying (liberado) goalkeepers.
+    """
+    gks = [
+        Player(id=1, session_id=1, name="GK Liberado Cedo", is_goalkeeper=True, has_arrived=True, is_paying=False, arrival_order=1),
+        Player(id=2, session_id=1, name="GK Pagante 1", is_goalkeeper=True, has_arrived=True, is_paying=True, arrival_order=2),
+        Player(id=3, session_id=1, name="GK Pagante 2", is_goalkeeper=True, has_arrived=True, is_paying=True, arrival_order=3),
+    ]
+    # 8 field players so draw can proceed
+    field = [
+        Player(id=i+10, session_id=1, name=f"Linha {i}", is_goalkeeper=False, has_arrived=True, is_paying=True, arrival_order=i)
+        for i in range(1, 9)
+    ]
+
+    all_players = gks + field
+    draw_teams(all_players)
+
+    playing_gks = [p for p in gks if p.is_playing]
+    waiting_gks = [p for p in gks if not p.is_playing]
+
+    assert len(playing_gks) == 2
+    assert len(waiting_gks) == 1
+
+    # The two paying GKs must be in court
+    assert {p.id for p in playing_gks} == {2, 3}
+    # The non-paying GK must be in waiting queue
+    assert waiting_gks[0].id == 1
+    assert waiting_gks[0].team_slot == 0
+
+
+def test_draw_teams_anti_clique_distribution_in_queue():
+    """
+    Ensures that when there are multiple teams in the waiting queue,
+    the waiting players are distributed across waiting teams and initial_draw_order
+    is properly sequential.
+    """
+    # 16 players: 8 on court, 8 in queue (forming Time 3 and Time 4)
+    players = []
+    for i in range(1, 17):
+        players.append(Player(
+            id=i,
+            session_id=1,
+            name=f"Jogador {i}",
+            has_arrived=True,
+            is_paying=True,
+            arrival_order=i
+        ))
+
+    draw_teams(players)
+
+    playing = [p for p in players if p.is_playing]
+    waiting = [p for p in players if not p.is_playing]
+
+    assert len(playing) == 8
+    assert len(waiting) == 8
+
+    # initial_draw_order must be 1 to 16 without duplicates
+    draw_orders = [p.initial_draw_order for p in players]
+    assert sorted(draw_orders) == list(range(1, 17))
+
+    # All waiting players should have initial_draw_order >= 9
+    for p in waiting:
+        assert p.initial_draw_order >= 9
+        assert p.cycles_waiting == 1
+
+
+def test_sort_entering_players_paying_priority():
+    """
+    Ensures that in the ongoing waiting queue (during match rotations),
+    paying players take priority over liberados (is_paying=False)
+    with the same cycles_waiting and matches_played.
+    """
+    p_liberado = Player(
+        id=1, session_id=1, name="Liberado Cedo", has_arrived=True,
+        is_paying=False, matches_played=0, cycles_waiting=1, arrival_order=1, initial_draw_order=9
+    )
+    p_pagante = Player(
+        id=2, session_id=1, name="Pagante Tarde", has_arrived=True,
+        is_paying=True, matches_played=0, cycles_waiting=1, arrival_order=2, initial_draw_order=10
+    )
+
+    waiting = [p_liberado, p_pagante]
+    sorted_waiting = sort_entering_players(waiting)
+
+    # Pagante must be ahead of liberado
+    assert sorted_waiting[0].id == p_pagante.id
+    assert sorted_waiting[1].id == p_liberado.id
+
+
+
+
 
