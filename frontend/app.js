@@ -2395,6 +2395,7 @@ async function handleRotateMatch(winner) {
         targetBtn.innerHTML = '<span class="spin-icon">⏳</span> Registrando...';
     }
 
+    let rotationSuccess = false;
     try {
         const response = await fetch(`${API_BASE}/sessions/hash/${currentPublicHash}/vencer?token=${encodeURIComponent(currentAdminToken)}`, {
             method: 'POST',
@@ -2416,6 +2417,7 @@ async function handleRotateMatch(winner) {
         showRotationFeedback(lastRes.winner, lastRes.winner_label, entering);
 
         renderMatchData(data, true);
+        rotationSuccess = true;
     } catch (error) {
         console.error('Erro na rotação:', error);
         alert('Erro de conexão ao registrar resultado.');
@@ -2425,13 +2427,15 @@ async function handleRotateMatch(winner) {
             if (btn) {
                 btn.disabled = false;
                 btn.classList.remove('is-loading');
-                if (prevTexts.has(btn) && (!targetBtn || targetBtn !== btn)) {
+                if (!rotationSuccess && prevTexts.has(btn)) {
                     btn.textContent = prevTexts.get(btn);
                 }
             }
         });
-        if (targetBtn && targetBtn.innerHTML.includes('⏳')) {
+        if (!rotationSuccess && targetBtn && targetBtn.innerHTML.includes('⏳')) {
             targetBtn.textContent = prevTexts.get(targetBtn) || targetBtn.textContent;
+        } else if (rotationSuccess && targetBtn === btnDraw) {
+            btnDraw.textContent = '🤝 Empatou';
         }
     }
 }
