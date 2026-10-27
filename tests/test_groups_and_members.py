@@ -68,8 +68,13 @@ def test_default_group_and_members_flow(test_client):
     assert m2_res.status_code == 200
     m2_id = m2_res.json()["member_id"]
 
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    curr_year = now.year
+    curr_month = now.month
+
     # 4. List members
-    members_res = test_client.get(f"/groups/{group_id}/members?year=2026&month=9")
+    members_res = test_client.get(f"/groups/{group_id}/members?year={curr_year}&month={curr_month}")
     assert members_res.status_code == 200
     members = members_res.json()
     carlos = next(m for m in members if m["id"] == m1_id)
@@ -79,8 +84,8 @@ def test_default_group_and_members_flow(test_client):
     # 5. Toggle monthly payment for Carlos
     pay_res = test_client.post(f"/groups/{group_id}/payments/toggle", json={
         "member_id": m1_id,
-        "year": 2026,
-        "month": 9,
+        "year": curr_year,
+        "month": curr_month,
         "is_paid": True,
         "amount": 60.0
     })
@@ -88,7 +93,7 @@ def test_default_group_and_members_flow(test_client):
     assert pay_res.json()["status"] == "paid"
 
     # Verify payment status is now paid
-    members_res_after = test_client.get(f"/groups/{group_id}/members?year=2026&month=9")
+    members_res_after = test_client.get(f"/groups/{group_id}/members?year={curr_year}&month={curr_month}")
     carlos_after = next(m for m in members_res_after.json() if m["id"] == m1_id)
     assert carlos_after["payment_status"] == "paid"
 

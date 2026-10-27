@@ -3478,6 +3478,26 @@ function renderCheckinViewData(data) {
         }
     }
 
+    const locationBadge = document.getElementById('checkin-location-badge');
+    const locationNotice = document.getElementById('checkin-location-notice');
+    const radiusLabel = document.getElementById('checkin-radius-label');
+
+    if (data.location_required) {
+        const r = data.location_radius || 1.0;
+        const rText = r >= 1.0 ? `${r.toFixed(1)} km` : `${Math.round(r * 1000)} m`;
+        const nameText = data.location_name ? ` (${data.location_name})` : '';
+
+        if (locationBadge) {
+            locationBadge.textContent = `📍 Raio de ${rText}${nameText}`;
+            locationBadge.classList.remove('hidden');
+        }
+        if (radiusLabel) radiusLabel.textContent = `${rText}${nameText}`;
+        if (locationNotice) locationNotice.classList.remove('hidden');
+    } else {
+        if (locationBadge) locationBadge.classList.add('hidden');
+        if (locationNotice) locationNotice.classList.add('hidden');
+    }
+
     // Render quick selection name chips
     if (checkinQuickNames) {
         checkinQuickNames.innerHTML = '';
@@ -3578,13 +3598,60 @@ async function handleCheckinSubmit() {
         return;
     }
 
+    let coords = null;
+    if (checkinSessionData && checkinSessionData.location_required) {
+        if (!navigator.geolocation) {
+            alert('⚠️ Seu navegador não suporta geolocalização. Por favor, abra o link de check-in no navegador do celular (Chrome/Safari) ou solicite a confirmação manual com o organizador.');
+            return;
+        }
+
+        if (btnSubmitCheckin) {
+            btnSubmitCheckin.disabled = true;
+            btnSubmitCheckin.textContent = '📍 Obtendo localização GPS...';
+        }
+
+        try {
+            coords = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => resolve({
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude
+                    }),
+                    (err) => reject(err),
+                    { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+                );
+            });
+        } catch (geoErr) {
+            console.warn('Erro ao obter localização:', geoErr);
+            let msg = 'Não foi possível obter sua localização GPS.';
+            if (geoErr.code === 1) { // PERMISSION_DENIED
+                msg = 'Permissão de localização negada. Para realizar o check-in, por favor autorize o acesso à sua localização nas configurações do seu navegador.';
+            } else if (geoErr.code === 2) { // POSITION_UNAVAILABLE
+                msg = 'Sua localização está indisponível. Verifique se o GPS do celular está ligado e tente novamente.';
+            } else if (geoErr.code === 3) { // TIMEOUT
+                msg = 'Tempo limite excedido ao buscar sinal do GPS. Tente novamente.';
+            }
+            alert(`⚠️ ${msg}`);
+            if (btnSubmitCheckin) {
+                btnSubmitCheckin.disabled = false;
+                btnSubmitCheckin.textContent = '📍 Confirmar Chegada (Cheguei!)';
+            }
+            return;
+        }
+    }
+
     if (btnSubmitCheckin) {
         btnSubmitCheckin.disabled = true;
         btnSubmitCheckin.textContent = '⏳ Registrando chegada...';
     }
 
     try {
-        const payload = { name: playerObj.name, player_id: playerObj.id };
+        const payload = { 
+            name: playerObj.name, 
+            player_id: playerObj.id,
+            latitude: coords ? coords.latitude : undefined,
+            longitude: coords ? coords.longitude : undefined
+        };
 
         const res = await fetch(`${API_BASE}/checkin/${checkinCurrentCode}`, {
             method: 'POST',
@@ -4381,6 +4448,28 @@ function populatePeladaConfigForm(group) {
 
     const pixInput = document.getElementById('cfg-pix-key');
     if (pixInput) pixInput.value = group.pix_key || '';
+
+    const locNameInput = document.getElementById('cfg-location-name');
+    if (locNameInput) locNameInput.value = group.location_name || '';
+
+    const locLatInput = document.getElementById('cfg-location-lat');
+    if (locLatInput) locLatInput.value = group.location_latitude != null ? group.location_latitude : '';
+
+    const locLngInput = document.getElementById('cfg-location-lng');
+    if (locLngInput) locLngInput.value = group.location_longitude != null ? group.location_longitude : '';
+
+    const locRadiusInput = document.getElementById('cfg-location-radius');
+    if (locRadiusInput) locRadiusInput.value = group.location_radius != null ? group.location_radius : 1.0;
+
+    const locStatus = document.getElementById('cfg-location-status');
+    if (locStatus) {
+        if (group.location_latitude != null && group.location_longitude != null) {
+            locStatus.textContent = `✓ Localização ativa (${group.location_latitude.toFixed(4)}, ${group.location_longitude.toFixed(4)})`;
+            locStatus.classList.remove('hidden');
+        } else {
+            locStatus.classList.add('hidden');
+        }
+    }
 }
 
 async function handleSavePeladaConfig() {
@@ -4405,6 +4494,19 @@ async function handleSavePeladaConfig() {
     const perMatchFee = parseFloat(document.getElementById('cfg-match-fee').value) || 15.0;
     const dueDay = parseInt(document.getElementById('cfg-due-day').value) || 10;
     const pixKey = document.getElementById('cfg-pix-key').value.trim();
+
+    const locName = (document.getElementById('cfg-location-name')?.value || '').trim();
+    const locLatRaw = document.getElementById('cfg-location-lat')?.value;
+    const locLngRaw = document.getElementById('cfg-location-lng')?.value;
+    const locRadiusRaw = document.getElementById('cfg-location-radius')?.value;
+
+    const hasLat = locLatRaw !== '' && locLatRaw != null && !isNaN(parseFloat(locLatRaw));
+    const hasLng = locLngRaw !== '' && locLngRaw != null && !isNaN(parseFloat(locLngRaw));
+    const locLat = hasLat ? parseFloat(locLatRaw) : null;
+    const locLng = hasLng ? parseFloat(locLngRaw) : null;
+    const locRadius = (locRadiusRaw !== '' && locRadiusRaw != null && !isNaN(parseFloat(locRadiusRaw))) ? Math.max(0.1, parseFloat(locRadiusRaw)) : 1.0;
+    const clearLoc = (!hasLat || !hasLng);
+
     const adminKey = getAdminKey();
 
     try {
@@ -4418,7 +4520,12 @@ async function handleSavePeladaConfig() {
                 monthly_fee: monthlyFee,
                 per_match_fee: perMatchFee,
                 due_day: dueDay,
-                pix_key: pixKey
+                pix_key: pixKey,
+                location_latitude: locLat,
+                location_longitude: locLng,
+                location_radius: locRadius,
+                location_name: locName || null,
+                clear_location: clearLoc
             })
         });
 
@@ -4729,6 +4836,56 @@ function setupRosterAndDashboardListeners() {
     // Save pelada config button
     const btnSaveConfig = document.getElementById('btn-save-pelada-config');
     if (btnSaveConfig) btnSaveConfig.addEventListener('click', handleSavePeladaConfig);
+
+    // Location Capture / Clear buttons
+    const btnCaptureLoc = document.getElementById('btn-capture-location');
+    if (btnCaptureLoc) {
+        btnCaptureLoc.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('⚠️ Seu navegador não suporta geolocalização.');
+                return;
+            }
+            btnCaptureLoc.disabled = true;
+            btnCaptureLoc.textContent = '⏳ Obtendo GPS...';
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    btnCaptureLoc.disabled = false;
+                    btnCaptureLoc.textContent = '📍 Usar Minha Localização Atual';
+                    const latInput = document.getElementById('cfg-location-lat');
+                    const lngInput = document.getElementById('cfg-location-lng');
+                    if (latInput) latInput.value = pos.coords.latitude.toFixed(6);
+                    if (lngInput) lngInput.value = pos.coords.longitude.toFixed(6);
+                    const locStatus = document.getElementById('cfg-location-status');
+                    if (locStatus) {
+                        locStatus.textContent = '✓ Coordenadas capturadas! Clique em "Salvar Configurações".';
+                        locStatus.classList.remove('hidden');
+                    }
+                    showToast('📍 Coordenadas capturadas com sucesso!');
+                },
+                (err) => {
+                    btnCaptureLoc.disabled = false;
+                    btnCaptureLoc.textContent = '📍 Usar Minha Localização Atual';
+                    alert('⚠️ Não foi possível obter sua localização. Verifique as permissões de GPS do navegador.');
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        });
+    }
+
+    const btnClearLoc = document.getElementById('btn-clear-location');
+    if (btnClearLoc) {
+        btnClearLoc.addEventListener('click', () => {
+            const latInput = document.getElementById('cfg-location-lat');
+            const lngInput = document.getElementById('cfg-location-lng');
+            const nameInput = document.getElementById('cfg-location-name');
+            if (latInput) latInput.value = '';
+            if (lngInput) lngInput.value = '';
+            if (nameInput) nameInput.value = '';
+            const locStatus = document.getElementById('cfg-location-status');
+            if (locStatus) locStatus.classList.add('hidden');
+            showToast('Restrição de localização desmarcada. Lembre-se de salvar.');
+        });
+    }
 
     // Member Modal handlers
     const btnNewMember = document.getElementById('btn-new-member');

@@ -289,6 +289,46 @@
                                 <input type="text" id="cfg-pix-key" class="input-field" placeholder="Ex: email@pix.com ou telefone">
                             </div>
 
+                            <!-- Seção de Localização e Raio de Check-in -->
+                            <div class="form-section-title" style="margin: 1.5rem 0 0.8rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <h3 style="font-size: 1rem; color: #38bdf8; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem;">
+                                    📍 Localização da Quadra & Restrição de Check-in
+                                </h3>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; line-height: 1.4;">
+                                    Defina o local da quadra para que o auto check-in pelo link/QR Code só seja liberado para jogadores que já estiverem fisicamente no local (evita check-in em casa).
+                                </p>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label for="cfg-location-name">Nome do Local / Quadra (Opcional)</label>
+                                <input type="text" id="cfg-location-name" class="input-field" placeholder="Ex: Arena Futebol Show, Quadra 1">
+                            </div>
+
+                            <div class="config-form-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+                                <div class="form-group">
+                                    <label for="cfg-location-lat">Latitude</label>
+                                    <input type="number" step="any" id="cfg-location-lat" class="input-field" placeholder="Ex: -23.550520">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-location-lng">Longitude</label>
+                                    <input type="number" step="any" id="cfg-location-lng" class="input-field" placeholder="Ex: -46.633308">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-location-radius">Raio Permitido (km)</label>
+                                    <input type="number" step="0.1" min="0.1" max="50" id="cfg-location-radius" class="input-field" value="1.0" placeholder="1.0">
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 0.75rem; margin-top: 0.8rem; margin-bottom: 1.8rem; flex-wrap: wrap; align-items: center;">
+                                <button type="button" id="btn-capture-location" class="btn secondary sm" style="display: flex; align-items: center; gap: 0.4rem;">
+                                    📍 Usar Minha Localização Atual
+                                </button>
+                                <button type="button" id="btn-clear-location" class="btn secondary sm danger-hover" style="display: flex; align-items: center; gap: 0.4rem;">
+                                    ✕ Desativar Restrição de Localização
+                                </button>
+                                <span id="cfg-location-status" style="font-size: 0.8rem; color: #10b981;" class="hidden">✓ Localização definida</span>
+                            </div>
+
                             <div style="display: flex; justify-content: flex-end;">
                                 <button type="button" id="btn-save-pelada-config" class="btn primary">💾 Salvar Configurações</button>
                             </div>
@@ -456,8 +496,9 @@
                         <div class="checkin-logo">⚽</div>
                         <h2 id="checkin-pelada-title">Check-in da Pelada</h2>
                         <p id="checkin-pelada-subtitle" class="text-muted">Confirme sua chegada na quadra</p>
-                        <div style="margin-top: 0.5rem;">
+                        <div style="margin-top: 0.5rem; display: flex; gap: 0.4rem; justify-content: center; flex-wrap: wrap;">
                             <span id="checkin-session-status-badge" class="badge active">Em andamento</span>
+                            <span id="checkin-location-badge" class="badge hidden" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">📍 Raio de 1km da quadra</span>
                         </div>
                     </div>
 
@@ -477,6 +518,9 @@
 
                         <div class="checkin-actions" style="margin-top: 1.5rem;">
                             <button id="btn-submit-checkin" class="btn primary lg checkin-btn" style="width: 100%;">📍 Confirmar Chegada (Cheguei!)</button>
+                            <p id="checkin-location-notice" class="hidden" style="font-size: 0.8rem; text-align: center; margin-top: 0.75rem; color: #94a3b8; line-height: 1.4;">
+                                📍 <em>Este check-in exige permissão de GPS em um raio de até <span id="checkin-radius-label">1.0 km</span> do local da quadra.</em>
+                            </p>
                         </div>
                     </div>
 
@@ -960,7 +1004,7 @@
     <div id="toast" class="toast hidden"></div>
 
     <script src="/static/qrcode.min.js"></script>
-    <script src="/static/app.js?v=22"></script>
+    <script src="/static/app.js?v=23"></script>
 </body>
 
 </html>

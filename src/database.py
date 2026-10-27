@@ -63,9 +63,27 @@ def run_auto_migrations():
                     per_match_fee FLOAT NOT NULL DEFAULT 15.0,
                     due_day INTEGER NOT NULL DEFAULT 10,
                     pix_key VARCHAR,
+                    location_latitude FLOAT,
+                    location_longitude FLOAT,
+                    location_radius FLOAT DEFAULT 1.0,
+                    location_name VARCHAR,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """))
+
+            # Migration for groups table columns
+            groups_check = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='groups'")).fetchone()
+            if groups_check:
+                g_result = conn.execute(text("PRAGMA table_info(groups)")).fetchall()
+                g_cols = [row[1] for row in g_result]
+                if "location_latitude" not in g_cols:
+                    conn.execute(text("ALTER TABLE groups ADD COLUMN location_latitude FLOAT"))
+                if "location_longitude" not in g_cols:
+                    conn.execute(text("ALTER TABLE groups ADD COLUMN location_longitude FLOAT"))
+                if "location_radius" not in g_cols:
+                    conn.execute(text("ALTER TABLE groups ADD COLUMN location_radius FLOAT DEFAULT 1.0"))
+                if "location_name" not in g_cols:
+                    conn.execute(text("ALTER TABLE groups ADD COLUMN location_name VARCHAR"))
 
             # Create members table if not exists
             conn.execute(text("""

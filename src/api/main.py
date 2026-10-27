@@ -14,6 +14,7 @@ import os
 
 from src.database import get_db
 import src.models as models
+from src.utils.geo import calculate_haversine_distance
 
 app = FastAPI(title="Pelada Bot API")
 
@@ -117,6 +118,8 @@ class ImportWhatsappRequest(BaseModel):
 class SelfCheckinRequest(BaseModel):
     name: Optional[str] = None
     player_id: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class BatchPlayerActionRequest(BaseModel):
     player_ids: List[int]
@@ -325,12 +328,18 @@ def get_checkin_session_info(checkin_code: str, db: Session = Depends(get_db)):
     
     all_players = db.query(models.Player).filter(models.Player.session_id == session.id).all()
     
+    group = session.group or (db.query(models.Group).filter(models.Group.id == session.group_id).first() if session.group_id else None)
+    location_required = bool(group and group.location_latitude is not None and group.location_longitude is not None)
+
     return {
         "session_id": session.id,
         "checkin_code": session.checkin_code or session.public_hash,
         "public_hash": session.public_hash,
         "is_active": session.is_active,
         "created_at": format_iso_utc(session.created_at),
+        "location_required": location_required,
+        "location_radius": (group.location_radius if (group and group.location_radius is not None) else 1.0) if location_required else None,
+        "location_name": (group.location_name if group else None) if location_required else None,
         "players": [
             {
                 "id": p.id,
@@ -353,6 +362,28 @@ def self_checkin(checkin_code: str, req: SelfCheckinRequest, db: Session = Depen
         
     if not session.is_active:
         raise HTTPException(status_code=400, detail="Esta pelada já foi finalizada. Aguarde o início da próxima sessão.")
+
+    # Validação de geolocalização se configurada para o grupo da pelada
+    group = session.group or (db.query(models.Group).filter(models.Group.id == session.group_id).first() if session.group_id else None)
+    if group and group.location_latitude is not None and group.location_longitude is not None:
+        if req.latitude is None or req.longitude is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Localização obrigatória. Por favor, ative e permita o acesso ao GPS/Localização no seu navegador para confirmar que está na quadra."
+            )
+        distance_km = calculate_haversine_distance(
+            req.latitude, req.longitude,
+            group.location_latitude, group.location_longitude
+        )
+        max_radius = group.location_radius if group.location_radius is not None else 1.0
+        if distance_km > max_radius:
+            loc_label = f" da {group.location_name}" if group.location_name else " da quadra"
+            dist_str = f"{distance_km:.1f} km" if distance_km >= 1.0 else f"{int(distance_km * 1000)} metros"
+            radius_str = f"{max_radius:.1f} km" if max_radius >= 1.0 else f"{int(max_radius * 1000)} metros"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Check-in não permitido: você está a aproximadamente {dist_str}{loc_label}. O auto check-in só é liberado em um raio de até {radius_str} do local da pelada."
+            )
 
     player = None
     if req.player_id:
@@ -1246,6 +1277,11 @@ class GroupUpdateRequest(BaseModel):
     per_match_fee: Optional[float] = None
     due_day: Optional[int] = None
     pix_key: Optional[str] = None
+    location_latitude: Optional[float] = None
+    location_longitude: Optional[float] = None
+    location_radius: Optional[float] = None
+    location_name: Optional[str] = None
+    clear_location: Optional[bool] = False
 
 class MemberCreateRequest(BaseModel):
     name: str
@@ -1300,7 +1336,12 @@ def api_update_group_settings(group_id: int, req: GroupUpdateRequest, key: Optio
         monthly_fee=req.monthly_fee,
         per_match_fee=req.per_match_fee,
         due_day=req.due_day,
-        pix_key=req.pix_key
+        pix_key=req.pix_key,
+        location_latitude=req.location_latitude,
+        location_longitude=req.location_longitude,
+        location_radius=req.location_radius,
+        location_name=req.location_name,
+        clear_location=bool(req.clear_location)
     )
     if not group:
         raise HTTPException(status_code=404, detail="Grupo/Pelada não encontrada")

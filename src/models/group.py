@@ -21,6 +21,12 @@ class Group(Base):
     per_match_fee = Column(Float, default=15.0, nullable=False)
     due_day = Column(Integer, default=10, nullable=False) # Dia do mês em que vence a mensalidade
     pix_key = Column(String, nullable=True)
+
+    # Localização Geográfica e Restrição de Raio para Check-in:
+    location_latitude = Column(Float, nullable=True)
+    location_longitude = Column(Float, nullable=True)
+    location_radius = Column(Float, default=1.0, nullable=True) # Raio em km (padrão 1.0 km)
+    location_name = Column(String, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

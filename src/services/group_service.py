@@ -37,7 +37,12 @@ def update_group(
     monthly_fee: Optional[float] = None,
     per_match_fee: Optional[float] = None,
     due_day: Optional[int] = None,
-    pix_key: Optional[str] = None
+    pix_key: Optional[str] = None,
+    location_latitude: Optional[float] = None,
+    location_longitude: Optional[float] = None,
+    location_radius: Optional[float] = None,
+    location_name: Optional[str] = None,
+    clear_location: bool = False
 ) -> Optional[Group]:
     group = get_group(db, group_id)
     if not group:
@@ -56,6 +61,20 @@ def update_group(
         group.due_day = int(due_day)
     if pix_key is not None:
         group.pix_key = pix_key.strip()
+    if clear_location:
+        group.location_latitude = None
+        group.location_longitude = None
+        group.location_radius = 1.0
+        group.location_name = None
+    else:
+        if location_latitude is not None:
+            group.location_latitude = float(location_latitude)
+        if location_longitude is not None:
+            group.location_longitude = float(location_longitude)
+        if location_radius is not None:
+            group.location_radius = max(0.1, float(location_radius))
+        if location_name is not None:
+            group.location_name = location_name.strip() if location_name else None
 
     db.add(group)
     db.commit()
@@ -328,7 +347,11 @@ def get_group_dashboard_summary(db: DbSession, group_id: int, year: Optional[int
             "monthly_fee": group.monthly_fee,
             "per_match_fee": group.per_match_fee,
             "due_day": group.due_day,
-            "pix_key": group.pix_key
+            "pix_key": group.pix_key,
+            "location_latitude": group.location_latitude,
+            "location_longitude": group.location_longitude,
+            "location_radius": group.location_radius if group.location_radius is not None else 1.0,
+            "location_name": group.location_name
         },
         "year": target_year,
         "month": target_month,

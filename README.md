@@ -55,24 +55,42 @@ PORT=8000
 
 ## 🏃 Como Rodar o Projeto
 
-### 1. Executar o Bot do Telegram
+### 🚀 Modo Unificado (Recomendado - Fora do Docker)
+Para iniciar automaticamente as migrações, o servidor FastAPI, o Bot do Telegram e o Cloudflare Tunnel juntos:
 
-Para iniciar o bot e escutar os comandos do Telegram:
+- **Via duplo clique ou Prompt (CMD):**
+  ```cmd
+  start.bat
+  ```
 
+- **Via PowerShell:**
+  ```powershell
+  .\start.ps1
+  ```
+
+- **Ou diretamente via Python:**
+  ```bash
+  python run.py
+  ```
+
+### 🧩 Execução Individual (Manual)
+
+#### 1. Executar o Bot do Telegram
 ```bash
 python src/main.py
 ```
 
-### 2. Executar o Dashboard Web (API & Frontend)
-
-Para rodar a interface web com FastAPI e Uvicorn:
-
+#### 2. Executar o Dashboard Web (API & Frontend)
 ```bash
 uvicorn src.api.main:app --reload --port 8000
 ```
-
 Após iniciar, abra o seu navegador no endereço:
 👉 [http://localhost:8000](http://localhost:8000)
+
+#### 3. Executar o Cloudflare Tunnel
+```bash
+cloudflared tunnel --no-autoupdate run --token %CLOUDFLARE_TUNNEL_TOKEN%
+```
 
 ---
 
