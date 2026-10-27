@@ -493,6 +493,38 @@ def test_rename_player_endpoint(client_and_db):
     assert "Player_New_Name" in p_names
     assert "Player_Old_Name" not in p_names
 
+def test_reset_match_timer(client_and_db):
+    client, session_id = client_and_db
+    
+    # Get session details
+    resp = client.get("/sessions")
+    assert resp.status_code == 200
+    sessions = resp.json()
+    curr_sess = next(s for s in sessions if s["id"] == session_id)
+    public_hash = curr_sess["public_hash"]
+    admin_token = curr_sess["admin_token"]
+    
+    # 1. Reset without token when session has admin_token -> 403
+    unauth_resp = client.post(f"/sessions/hash/{public_hash}/reset-timer")
+    assert unauth_resp.status_code == 403
+    
+    # 2. Reset with wrong token -> 403
+    wrong_resp = client.post(f"/sessions/hash/{public_hash}/reset-timer?token=wrong_token")
+    assert wrong_resp.status_code == 403
+    
+    # 3. Reset with valid admin_token -> 200
+    reset_resp = client.post(f"/sessions/hash/{public_hash}/reset-timer?token={admin_token}")
+    assert reset_resp.status_code == 200
+    data = reset_resp.json()
+    assert data["last_event_type"] == "timer_reset"
+    assert data["last_event_time"] is not None
+    
+    # 4. GET match by hash also returns last_event_type == timer_reset
+    get_match = client.get(f"/sessions/hash/{public_hash}")
+    assert get_match.status_code == 200
+    assert get_match.json()["last_event_type"] == "timer_reset"
+
+
 
 
 

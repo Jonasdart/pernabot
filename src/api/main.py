@@ -496,6 +496,21 @@ def rotate_match(public_hash: str, req: RotateRequest, token: Optional[str] = No
     }
     return res
 
+@app.post("/sessions/hash/{public_hash}/reset-timer")
+def reset_match_timer(public_hash: str, token: Optional[str] = None, db: Session = Depends(get_db)):
+    session = get_session_by_hash(db, public_hash)
+    if not session:
+        raise HTTPException(status_code=404, detail="Pelada não encontrada")
+    if session.admin_token and session.admin_token != token:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado: token de administrador inválido")
+        
+    now = datetime.now(timezone.utc)
+    match_log = models.MatchLog(session_id=session.id, event_type="timer_reset", created_at=now)
+    db.add(match_log)
+    db.commit()
+    
+    return build_match_response(session, db, token)
+
 @app.post("/sessions/hash/{public_hash}/descer")
 def player_step_down(public_hash: str, req: PlayerActionRequest, token: Optional[str] = None, db: Session = Depends(get_db)):
     session = get_session_by_hash(db, public_hash)

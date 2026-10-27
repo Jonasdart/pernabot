@@ -64,6 +64,8 @@ const matchBackBtn = document.getElementById('match-back-btn');
 const matchRefreshBtn = document.getElementById('match-refresh-btn');
 const adminBadge = document.getElementById('admin-badge');
 const matchStopwatch = document.getElementById('match-stopwatch');
+const stopwatchContainer = document.getElementById('stopwatch-container');
+const timerResetHint = document.getElementById('timer-reset-hint');
 const matchSessionLabel = document.getElementById('match-session-label');
 const adminControlsPanel = document.getElementById('admin-controls-panel');
 const btnWinT1 = document.getElementById('btn-win-t1');
@@ -1884,6 +1886,10 @@ function setupMatchViewListeners() {
     btnDraw.addEventListener('click', () => handleRotateMatch(0));
     btnWinT2.addEventListener('click', () => handleRotateMatch(2));
 
+    if (stopwatchContainer) {
+        stopwatchContainer.addEventListener('click', handleResetStopwatch);
+    }
+
 
     // Add Player Modal & Button Listener
     const addPlayerBtn = document.getElementById('add-player-btn');
@@ -2504,6 +2510,19 @@ function renderMatchData(data, isManualAction = false) {
         if (quickAddArrivalSection) quickAddArrivalSection.classList.add('hidden');
     }
 
+    // Update stopwatch reset button/hint visibility based on is_admin
+    if (timerResetHint) {
+        if (data.is_admin) {
+            timerResetHint.textContent = '🔄 Zerar';
+            timerResetHint.classList.remove('hidden');
+            if (stopwatchContainer) stopwatchContainer.title = 'Clique para zerar o cronômetro da partida';
+        } else {
+            timerResetHint.textContent = '';
+            timerResetHint.classList.add('hidden');
+            if (stopwatchContainer) stopwatchContainer.title = 'Tempo da partida';
+        }
+    }
+
     // Auto-detect rotation event for spectators polling live
     if (!isManualAction && data.last_event_type === 'rotate' && data.last_event_time) {
         if (lastSeenRotationEventTime && lastSeenRotationEventTime !== data.last_event_time) {
@@ -3062,6 +3081,41 @@ async function handleRotateMatch(winner) {
         } else if (rotationSuccess && targetBtn === btnDraw) {
             btnDraw.textContent = '🤝 Empatou';
         }
+    }
+}
+
+async function handleResetStopwatch() {
+    if (!currentPublicHash) return;
+
+    if (!currentAdminToken) {
+        showToast("⚠️ Apenas a gestão da quadra pode zerar o cronômetro.");
+        return;
+    }
+
+    const confirmReset = confirm("Deseja zerar o cronômetro desta partida agora?");
+    if (!confirmReset) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/sessions/hash/${currentPublicHash}/reset-timer?token=${encodeURIComponent(currentAdminToken)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            showToast(`❌ ${err.detail || 'Não foi possível zerar o cronômetro'}`);
+            return;
+        }
+
+        const data = await response.json();
+        matchLastEventTime = Date.now();
+        if (matchStopwatch) matchStopwatch.textContent = "00:00";
+        startStopwatch();
+        showToast("⏱️ Cronômetro zerado com sucesso!");
+        renderMatchData(data, true);
+    } catch (e) {
+        console.error("Erro ao resetar cronômetro:", e);
+        showToast("❌ Erro de conexão ao zerar o cronômetro.");
     }
 }
 
@@ -4523,6 +4577,8 @@ function populatePeladaConfigForm(group) {
         } else {
             locStatus.classList.add('hidden');
         }
+    }
+
     const redirectTargetSelect = document.getElementById('cfg-checkin-redirect-target');
     if (redirectTargetSelect) {
         redirectTargetSelect.value = group.checkin_redirect_target || 'match';

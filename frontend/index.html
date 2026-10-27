@@ -611,8 +611,9 @@
                         <div class="timer-title">
                             <p id="match-session-label">Tempo rolado</p>
                         </div>
-                        <div class="stopwatch-display">
+                        <div class="stopwatch-display" id="stopwatch-container" title="Clique para zerar o cronômetro">
                             <span id="match-stopwatch" class="timer-time">00:00</span>
+                            <span class="timer-reset-hint" id="timer-reset-hint">🔄 Zerar</span>
                         </div>
                     </div>
                 </div>
@@ -1025,7 +1026,7 @@
     <div id="toast" class="toast hidden"></div>
 
     <script src="/static/qrcode.min.js"></script>
-    <script src="/static/app.js?v=24"></script>
+    <script src="/static/app.js?v=26"></script>
 </body>
 
 </html>
