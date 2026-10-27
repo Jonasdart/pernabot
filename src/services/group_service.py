@@ -42,7 +42,8 @@ def update_group(
     location_longitude: Optional[float] = None,
     location_radius: Optional[float] = None,
     location_name: Optional[str] = None,
-    clear_location: bool = False
+    clear_location: bool = False,
+    checkin_redirect_target: Optional[str] = None
 ) -> Optional[Group]:
     group = get_group(db, group_id)
     if not group:
@@ -61,6 +62,8 @@ def update_group(
         group.due_day = int(due_day)
     if pix_key is not None:
         group.pix_key = pix_key.strip()
+    if checkin_redirect_target is not None:
+        group.checkin_redirect_target = "match_admin" if checkin_redirect_target == "match_admin" else "match"
     if clear_location:
         group.location_latitude = None
         group.location_longitude = None
@@ -351,7 +354,8 @@ def get_group_dashboard_summary(db: DbSession, group_id: int, year: Optional[int
             "location_latitude": group.location_latitude,
             "location_longitude": group.location_longitude,
             "location_radius": group.location_radius if group.location_radius is not None else 1.0,
-            "location_name": group.location_name
+            "location_name": group.location_name,
+            "checkin_redirect_target": getattr(group, "checkin_redirect_target", "match") or "match"
         },
         "year": target_year,
         "month": target_month,

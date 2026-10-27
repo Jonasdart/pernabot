@@ -3384,6 +3384,8 @@ function handleOpenQrModal() {
 // Check-in View Implementation
 // ==========================================
 
+let checkinRedirectCountdownTimer = null;
+
 function setupCheckinListeners() {
     if (checkinNameInput) {
         checkinNameInput.addEventListener('input', handleCheckinInput);
@@ -3408,14 +3410,28 @@ function setupCheckinListeners() {
 
     if (btnGotoMatch) {
         btnGotoMatch.addEventListener('click', () => {
+            if (checkinRedirectCountdownTimer) {
+                clearInterval(checkinRedirectCountdownTimer);
+                checkinRedirectCountdownTimer = null;
+            }
             if (checkinSessionData && checkinSessionData.public_hash) {
-                window.location.hash = `#/match/${checkinSessionData.public_hash}`;
+                const redirectTarget = checkinSessionData.redirect_target || 'match';
+                const adminToken = checkinSessionData.admin_token;
+                if (redirectTarget === 'match_admin' && adminToken) {
+                    window.location.hash = `#/match/${checkinSessionData.public_hash}?admin=${encodeURIComponent(adminToken)}`;
+                } else {
+                    window.location.hash = `#/match/${checkinSessionData.public_hash}`;
+                }
             }
         });
     }
 
     if (btnCheckinAnother) {
         btnCheckinAnother.addEventListener('click', () => {
+            if (checkinRedirectCountdownTimer) {
+                clearInterval(checkinRedirectCountdownTimer);
+                checkinRedirectCountdownTimer = null;
+            }
             if (checkinFormContainer) checkinFormContainer.classList.remove('hidden');
             if (checkinSuccessContainer) checkinSuccessContainer.classList.add('hidden');
             if (checkinNameInput) {
@@ -3717,6 +3733,44 @@ function renderCheckinSuccess(result) {
     }
 
     showToast(`📍 Check-in confirmado para ${player.name}!`);
+
+    // Redirecionamento configurado para a Quadra ou Gestão da Quadra
+    const publicHash = result.public_hash || (checkinSessionData ? checkinSessionData.public_hash : null);
+    const redirectTarget = result.redirect_target || (checkinSessionData ? checkinSessionData.redirect_target : 'match');
+    const adminToken = result.admin_token || (checkinSessionData ? checkinSessionData.admin_token : null);
+
+    if (publicHash) {
+        let targetHash = `#/match/${publicHash}`;
+        let btnText = '👁️ Ver Quadra ao Vivo';
+        if (redirectTarget === 'match_admin' && adminToken) {
+            targetHash = `#/match/${publicHash}?admin=${encodeURIComponent(adminToken)}`;
+            btnText = '⚡ Ir para Gestão da Quadra (Marcar Vencedores)';
+        }
+
+        if (btnGotoMatch) {
+            let secondsLeft = 3;
+            btnGotoMatch.innerHTML = `${btnText} <span style="opacity: 0.8; font-size: 0.85em;">(${secondsLeft}s)</span>`;
+            btnGotoMatch.onclick = () => {
+                if (checkinRedirectCountdownTimer) {
+                    clearInterval(checkinRedirectCountdownTimer);
+                    checkinRedirectCountdownTimer = null;
+                }
+                window.location.hash = targetHash;
+            };
+
+            if (checkinRedirectCountdownTimer) clearInterval(checkinRedirectCountdownTimer);
+            checkinRedirectCountdownTimer = setInterval(() => {
+                secondsLeft -= 1;
+                if (secondsLeft <= 0) {
+                    clearInterval(checkinRedirectCountdownTimer);
+                    checkinRedirectCountdownTimer = null;
+                    window.location.hash = targetHash;
+                } else if (btnGotoMatch) {
+                    btnGotoMatch.innerHTML = `${btnText} <span style="opacity: 0.8; font-size: 0.85em;">(${secondsLeft}s)</span>`;
+                }
+            }, 1000);
+        }
+    }
 }
 
 // ==========================================
@@ -4469,6 +4523,9 @@ function populatePeladaConfigForm(group) {
         } else {
             locStatus.classList.add('hidden');
         }
+    const redirectTargetSelect = document.getElementById('cfg-checkin-redirect-target');
+    if (redirectTargetSelect) {
+        redirectTargetSelect.value = group.checkin_redirect_target || 'match';
     }
 }
 
@@ -4506,6 +4563,7 @@ async function handleSavePeladaConfig() {
     const locLng = hasLng ? parseFloat(locLngRaw) : null;
     const locRadius = (locRadiusRaw !== '' && locRadiusRaw != null && !isNaN(parseFloat(locRadiusRaw))) ? Math.max(0.1, parseFloat(locRadiusRaw)) : 1.0;
     const clearLoc = (!hasLat || !hasLng);
+    const redirectTarget = document.getElementById('cfg-checkin-redirect-target')?.value || 'match';
 
     const adminKey = getAdminKey();
 
@@ -4525,7 +4583,8 @@ async function handleSavePeladaConfig() {
                 location_longitude: locLng,
                 location_radius: locRadius,
                 location_name: locName || null,
-                clear_location: clearLoc
+                clear_location: clearLoc,
+                checkin_redirect_target: redirectTarget
             })
         });
 

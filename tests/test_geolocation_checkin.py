@@ -148,3 +148,39 @@ def test_checkin_unrestricted_when_group_has_no_location(client_with_geo):
     chk_res = client.post(f"/checkin/{checkin_code}", json={"player_id": messi_id})
     assert chk_res.status_code == 200
     assert chk_res.json()["player"]["has_arrived"] is True
+
+
+def test_checkin_redirect_target_configuration(client_with_geo):
+    client, group_id, session_id, player_id, checkin_code = client_with_geo
+
+    # Default is "match" (quadra ao vivo), admin_token is not exposed
+    info_res = client.get(f"/checkin/{checkin_code}")
+    assert info_res.status_code == 200
+    assert info_res.json()["redirect_target"] == "match"
+    assert info_res.json()["admin_token"] is None
+
+    # Update group to redirect to "match_admin" (gestão da quadra com poderes para marcar vencedores)
+    update_res = client.put(f"/groups/{group_id}", json={
+        "checkin_redirect_target": "match_admin"
+    })
+    assert update_res.status_code == 200
+
+    # GET /checkin/{checkin_code} now returns match_admin and admin_token
+    info_res2 = client.get(f"/checkin/{checkin_code}")
+    assert info_res2.status_code == 200
+    assert info_res2.json()["redirect_target"] == "match_admin"
+    assert info_res2.json()["admin_token"] is not None
+
+    # POST /checkin/{checkin_code} returns match_admin and admin_token
+    add_p = client.post(f"/sessions/{session_id}/players", json={"name": "Vini Jr", "is_paying": True})
+    vini_id = add_p.json()["player_id"]
+    chk_res = client.post(f"/checkin/{checkin_code}", json={
+        "player_id": vini_id,
+        "latitude": -23.5620,
+        "longitude": -46.6559
+    })
+    assert chk_res.status_code == 200
+    chk_data = chk_res.json()
+    assert chk_data["redirect_target"] == "match_admin"
+    assert chk_data["admin_token"] is not None
+

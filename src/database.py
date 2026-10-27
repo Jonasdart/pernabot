@@ -67,6 +67,7 @@ def run_auto_migrations():
                     location_longitude FLOAT,
                     location_radius FLOAT DEFAULT 1.0,
                     location_name VARCHAR,
+                    checkin_redirect_target VARCHAR NOT NULL DEFAULT 'match',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """))
@@ -84,6 +85,8 @@ def run_auto_migrations():
                     conn.execute(text("ALTER TABLE groups ADD COLUMN location_radius FLOAT DEFAULT 1.0"))
                 if "location_name" not in g_cols:
                     conn.execute(text("ALTER TABLE groups ADD COLUMN location_name VARCHAR"))
+                if "checkin_redirect_target" not in g_cols:
+                    conn.execute(text("ALTER TABLE groups ADD COLUMN checkin_redirect_target VARCHAR DEFAULT 'match'"))
 
             # Create members table if not exists
             conn.execute(text("""

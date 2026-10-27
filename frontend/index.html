@@ -329,6 +329,27 @@
                                 <span id="cfg-location-status" style="font-size: 0.8rem; color: #10b981;" class="hidden">✓ Localização definida</span>
                             </div>
 
+                            <!-- Configuração do Destino pós Check-in -->
+                            <div class="form-section-title" style="margin: 1.5rem 0 0.8rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <h3 style="font-size: 1rem; color: #38bdf8; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem;">
+                                    🔄 Destino pós Check-in (QR Code)
+                                </h3>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; line-height: 1.4;">
+                                    Escolha para onde o jogador será direcionado após confirmar a chegada na quadra.
+                                </p>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 1.5rem;">
+                                <label for="cfg-checkin-redirect-target">Para onde direcionar após o check-in?</label>
+                                <select id="cfg-checkin-redirect-target" class="input-field" style="background: rgba(15,23,42,0.8); font-size: 0.9rem;">
+                                    <option value="match">👁️ Quadra ao Vivo (Apenas visualização dos times e da fila)</option>
+                                    <option value="match_admin">⚡ Gestão da Quadra (Permite marcar vencedores na quadra)</option>
+                                </select>
+                                <p style="font-size: 0.78rem; color: #94a3b8; margin-top: 0.4rem; line-height: 1.4;">
+                                    💡 <em>Ao selecionar "Gestão da Quadra", os próprios jogadores poderão registrar as vitórias dos times na quadra, aumentando o engajamento sem depender do organizador.</em>
+                                </p>
+                            </div>
+
                             <div style="display: flex; justify-content: flex-end;">
                                 <button type="button" id="btn-save-pelada-config" class="btn primary">💾 Salvar Configurações</button>
                             </div>
@@ -1004,7 +1025,7 @@
     <div id="toast" class="toast hidden"></div>
 
     <script src="/static/qrcode.min.js"></script>
-    <script src="/static/app.js?v=23"></script>
+    <script src="/static/app.js?v=24"></script>
 </body>
 
 </html>

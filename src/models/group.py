@@ -27,6 +27,9 @@ class Group(Base):
     location_longitude = Column(Float, nullable=True)
     location_radius = Column(Float, default=1.0, nullable=True) # Raio em km (padrão 1.0 km)
     location_name = Column(String, nullable=True)
+
+    # Redirecionamento pós check-in: 'match' (Quadra ao Vivo) ou 'match_admin' (Gestão da Quadra)
+    checkin_redirect_target = Column(String, default="match", nullable=False)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

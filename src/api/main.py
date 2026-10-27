@@ -330,11 +330,14 @@ def get_checkin_session_info(checkin_code: str, db: Session = Depends(get_db)):
     
     group = session.group or (db.query(models.Group).filter(models.Group.id == session.group_id).first() if session.group_id else None)
     location_required = bool(group and group.location_latitude is not None and group.location_longitude is not None)
+    redirect_target = getattr(group, "checkin_redirect_target", "match") or "match"
 
     return {
         "session_id": session.id,
         "checkin_code": session.checkin_code or session.public_hash,
         "public_hash": session.public_hash,
+        "admin_token": session.admin_token if redirect_target == "match_admin" else None,
+        "redirect_target": redirect_target,
         "is_active": session.is_active,
         "created_at": format_iso_utc(session.created_at),
         "location_required": location_required,
@@ -428,6 +431,9 @@ def self_checkin(checkin_code: str, req: SelfCheckinRequest, db: Session = Depen
 
     is_next_team = queue_pos is not None and queue_pos <= 4
 
+    redirect_target = getattr(group, "checkin_redirect_target", "match") or "match"
+    admin_token = session.admin_token if redirect_target == "match_admin" else None
+
     return {
         "success": True,
         "message": f"Check-in realizado com sucesso! {'Bem-vindo de volta!' if already_arrived else 'Bom jogo!'}",
@@ -442,7 +448,9 @@ def self_checkin(checkin_code: str, req: SelfCheckinRequest, db: Session = Depen
             "queue_position": queue_pos,
             "is_next_team": is_next_team
         },
-        "public_hash": session.public_hash
+        "public_hash": session.public_hash,
+        "admin_token": admin_token,
+        "redirect_target": redirect_target
     }
 
 @app.get("/sessions/hash/{public_hash}")
@@ -1282,6 +1290,7 @@ class GroupUpdateRequest(BaseModel):
     location_radius: Optional[float] = None
     location_name: Optional[str] = None
     clear_location: Optional[bool] = False
+    checkin_redirect_target: Optional[str] = None
 
 class MemberCreateRequest(BaseModel):
     name: str
@@ -1341,7 +1350,8 @@ def api_update_group_settings(group_id: int, req: GroupUpdateRequest, key: Optio
         location_longitude=req.location_longitude,
         location_radius=req.location_radius,
         location_name=req.location_name,
-        clear_location=bool(req.clear_location)
+        clear_location=bool(req.clear_location),
+        checkin_redirect_target=req.checkin_redirect_target
     )
     if not group:
         raise HTTPException(status_code=404, detail="Grupo/Pelada não encontrada")
